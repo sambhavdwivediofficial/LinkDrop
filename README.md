@@ -136,7 +136,8 @@ linkdrop/
 ## Author
 
 **Sambhav Dwivedi**
-[sambhavdwivedi.in](https://sambhavdwivedi.in)
+
+- Website: https://sambhavdwivedi.in
 
 ---
 
