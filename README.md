@@ -143,7 +143,7 @@ linkdrop/
 
 ## License
 
-Copyright © 2025 Sambhav Dwivedi. All Rights Reserved.
+Copyright © 2026 Sambhav Dwivedi. All Rights Reserved.
 
 See [LICENSE](./LICENSE) — unauthorized use, copying, or distribution is strictly prohibited.
 
