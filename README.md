@@ -72,7 +72,7 @@ Sender's Browser                              Receiver's Browser
 │  Password set    │ peer introduced  │ ◄── Link opened       │
 │  Link shared ──► │ handshake done   │     Password entered  │
 │                  │                  │                       │
-│  ◄───────────────────── WebRTC ─────────────────────────►  │
+│  ◄───────────────────── WebRTC ─────────────────────────►   │
 │         Direct P2P — server completely bypassed             │
 └─────────────────────────────────────────────────────────────┘
 ```
