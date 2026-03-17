@@ -6,7 +6,7 @@ import {
   IconLock, IconDownload, IconEye, IconEyeOff,
   IconFile, IconText, IconAlert, IconCheck
 } from "../lib/icons";
-import "../index.css"; // external CSS
+import "../index.css";
 
 const STEPS = {
   LOADING:    "loading",
@@ -32,11 +32,11 @@ export default function ReceivePage() {
   const [copied, setCopied]        = useState(false);
   const [fromCache, setFromCache]  = useState(false);
   const [allDownloaded, setAllDl]  = useState(false);
+  const [unlocking, setUnlocking]  = useState(false);
   const downloadedCount = useRef(0);
   const socketRef   = useRef(null);
   const receiverRef = useRef(null);
 
-  // ── On mount: check IDB first, then check if room exists ─────────────────
   useEffect(() => {
     loadSession(roomId).then(cached => {
       if (cached && (cached.files?.length > 0 || cached.text)) {
@@ -83,6 +83,9 @@ export default function ReceivePage() {
   const handleUnlock = async () => {
     setError("");
     if (!pw.trim()) return setError("Password is required.");
+
+    setUnlocking(true);
+
     try {
       const hash   = await sha256(pw.trim());
       const socket = createSocket();
@@ -90,7 +93,13 @@ export default function ReceivePage() {
 
       socket.on("connect", () => {
         socket.emit("join-room", { roomId, passwordHash: hash }, async (res) => {
-          if (res.error) { setError(res.error); socket.disconnect(); return; }
+          if (res.error) {
+            setUnlocking(false);
+            setError(res.error);
+            socket.disconnect();
+            return;
+          }
+          setUnlocking(false);
           setMeta(res.meta);
           setStep(STEPS.CONNECTING);
           setStat("Connecting to sender...");
@@ -136,7 +145,7 @@ export default function ReceivePage() {
               setStep(STEPS.DONE);
             },
 
-            onError: (msg) => { setError(msg); setStep(STEPS.ERROR); },
+            onError: (msg) => { setUnlocking(false); setError(msg); setStep(STEPS.ERROR); },
           });
           receiverRef.current = receiver;
 
@@ -150,8 +159,11 @@ export default function ReceivePage() {
         });
       });
 
-      socket.on("connect_error", () => setError("Could not connect to server."));
-    } catch(e) { setError(e.message); }
+      socket.on("connect_error", () => {
+        setUnlocking(false);
+        setError("Could not connect to server.");
+      });
+    } catch(e) { setUnlocking(false); setError(e.message); }
   };
 
   const downloadFile = (item) => {
@@ -184,6 +196,24 @@ export default function ReceivePage() {
 
   return (
     <div className="rcv-container">
+
+      {/* ── Unlocking overlay ── */}
+      {unlocking && (
+        <div className="shr-creating-overlay">
+          <div className="shr-creating-box">
+            <div className="shr-creating-spinner">
+              <div className="shr-spin-ring" />
+              <div className="shr-spin-ring shr-spin-ring-2" />
+              <div className="shr-spin-ring shr-spin-ring-3" />
+            </div>
+            <div className="shr-creating-text">UNLOCKING</div>
+            <div className="shr-creating-dots">
+              <span /><span /><span />
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="rcv-header">
         <a href="/" className="rcv-logo">LINKDROP</a>
         <span className="rcv-mode">RECEIVE MODE</span>
@@ -246,7 +276,7 @@ export default function ReceivePage() {
                 </div>
               </div>
 
-              <button className="rcv-btn-primary" onClick={handleUnlock}>
+              <button className="rcv-btn-primary" onClick={handleUnlock} disabled={unlocking}>
                 <IconLock size={18} /> UNLOCK
               </button>
 
@@ -313,7 +343,7 @@ export default function ReceivePage() {
                 </div>
                 <div>
                   <span className="rcv-done-label">CONTENT READY</span>
-                  {fromCache && <span className="rcv-done-cache">Restored from cache</span>}
+                  {fromCache && <span className="rcv-done-cache"></span>}
                 </div>
               </div>
               <h2 className="rcv-heading rcv-heading-done">DOWNLOAD</h2>
@@ -387,7 +417,7 @@ export default function ReceivePage() {
       </main>
 
       <footer className="rcv-footer">
-        <span>LINKDROP © 2025</span>
+        <span>LINKDROP © {new Date().getFullYear()}</span>
         <span>P2P · ZERO SERVER STORAGE</span>
       </footer>
     </div>

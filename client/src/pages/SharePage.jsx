@@ -31,6 +31,7 @@ export default function SharePage() {
   const [overallPct, setOvPct]    = useState(0);
   const [receiverSaved, setRSaved]    = useState(false);
   const [receiverDownloaded, setRDl]  = useState(false);
+  const [creating, setCreating]       = useState(false);
   const [roomIdRef_]              = useState({ current: "" });
 
   const socketRef  = useRef(null);
@@ -90,6 +91,8 @@ export default function SharePage() {
     if (hasText && !text.trim())       return setError("Please enter text.");
     if (!password.trim())              return setError("Please enter a password.");
 
+    setCreating(true);
+
     try {
       const hash   = await sha256(password.trim());
       const meta   = buildMeta(hasFile ? files : [], hasText ? text : null);
@@ -100,6 +103,7 @@ export default function SharePage() {
         socket.emit("create-room", { passwordHash: hash, meta }, ({ roomId }) => {
           roomIdSaved.current = roomId;
           setLink(`${window.location.origin}/r/${roomId}`);
+          setCreating(false);
           setStep(STEPS.WAITING);
         });
       });
@@ -122,7 +126,10 @@ export default function SharePage() {
         setStep(STEPS.DONE);
       });
 
-      socket.on("connect_error", () => setError("Could not connect to server."));
+      socket.on("connect_error", () => {
+        setCreating(false);
+        setError("Could not connect to server.");
+      });
 
       const totalBytes = hasFile ? files.reduce((a, f) => a + f.size, 0) : 0;
       let sentBytes = {};
@@ -144,10 +151,10 @@ export default function SharePage() {
           setStep(STEPS.SENT);
           setStat("Transfer complete! Waiting for receiver to download...");
         },
-        onError: (msg) => { setError(msg); setStep(STEPS.COMPOSE); },
+        onError: (msg) => { setCreating(false); setError(msg); setStep(STEPS.COMPOSE); },
       });
 
-    } catch (e) { setError(e.message); }
+    } catch (e) { setCreating(false); setError(e.message); }
   };
 
   const copyLink = () => {
@@ -158,13 +165,31 @@ export default function SharePage() {
     socketRef.current?.disconnect(); senderRef.current?.destroy();
     setStep(STEPS.COMPOSE); setFiles([]); setText(""); setPass("");
     setError(""); setLink(""); setCopied(false); setProgMap({});
-    setOvPct(0); setStat(""); setRSaved(false); setRDl(false);
+    setOvPct(0); setStat(""); setRSaved(false); setRDl(false); setCreating(false);
     if (fileRef.current)   fileRef.current.value   = "";
     if (folderRef.current) folderRef.current.value = "";
   };
 
   return (
     <div className="shr-container">
+
+      {/* ── Creating overlay ── */}
+      {creating && (
+        <div className="shr-creating-overlay">
+          <div className="shr-creating-box">
+            <div className="shr-creating-spinner">
+              <div className="shr-spin-ring" />
+              <div className="shr-spin-ring shr-spin-ring-2" />
+              <div className="shr-spin-ring shr-spin-ring-3" />
+            </div>
+            <div className="shr-creating-text">CREATING LINK</div>
+            <div className="shr-creating-dots">
+              <span /><span /><span />
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="shr-header">
         <span className="shr-logo">LINKDROP</span>
         <span className="shr-mode">P2P · NO SERVER STORAGE</span>
@@ -183,7 +208,6 @@ export default function SharePage() {
                 <p className="shr-compose-sub">FILE · FOLDER · TEXT · ANYTHING · DIRECT P2P</p>
               </div>
 
-              {/* Tabs */}
               <div className="shr-tabs shr-fade-up1">
                 {[
                   ["both", "All-in-One"],
@@ -304,14 +328,17 @@ export default function SharePage() {
               </div>
 
               <div className="shr-fade-up3">
-                <button className="shr-btn-primary" onClick={handleCreate}>
+                <button className="shr-btn-primary" onClick={handleCreate} disabled={creating}>
                   <IconWifi size={18} /> CREATE LINK
                 </button>
               </div>
 
               {error && (
                 <div className="shr-error">
-                  <IconAlert size={14} /> {error}
+                  <IconAlert size={14} />
+                  {error.includes("User-Initiated Abort")
+                    ? "Connection closed safely"
+                    : error}
                 </div>
               )}
             </>
@@ -405,9 +432,7 @@ export default function SharePage() {
             <div className="shr-sent shr-fade-up">
               <div className="shr-sent-header">
                 <span className="shr-live" />
-                <span className="shr-sent-label">
-                  {receiverSaved ? "RECEIVER IS DOWNLOADING" : "RECEIVER IS DOWNLOADING"}
-                </span>
+                <span className="shr-sent-label">RECEIVER IS DOWNLOADING</span>
               </div>
               <h2 className="shr-heading shr-heading-sent">
                 {receiverSaved ? "" : "PLEASE\nWAIT"}
@@ -417,9 +442,7 @@ export default function SharePage() {
                 <div className="shr-status-row">
                   <div className={`shr-status-dot ${receiverSaved ? "shr-status-done" : "shr-status-pending"}`} />
                   <span className={receiverSaved ? "shr-status-text-done" : "shr-status-text-pending"}>
-                    {receiverSaved
-                      ? "File has been saved on receiver's device"
-                      : "File is being received in receiver's browser..."}
+                    File is being received in receiver's browser...
                   </span>
                 </div>
                 <div className="shr-status-row">
@@ -470,7 +493,7 @@ export default function SharePage() {
       </main>
 
       <footer className="shr-footer">
-        <span>LINKDROP © 2026</span>
+        <span>LINKDROP © {new Date().getFullYear()}</span>
         <span>P2P · ZERO SERVER STORAGE</span>
       </footer>
     </div>
