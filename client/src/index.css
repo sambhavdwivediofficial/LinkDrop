@@ -37,6 +37,7 @@ body {
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
+  user-select: none;
 }
 
 button {
