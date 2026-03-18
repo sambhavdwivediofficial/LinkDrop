@@ -29,7 +29,3 @@ Thumbs.db
 *.sln
 uploads/
 _store/
-/electron
-/package.json
-/package-lock.json
-/dist-electron
