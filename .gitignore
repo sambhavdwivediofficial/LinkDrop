@@ -29,3 +29,4 @@ Thumbs.db
 *.sln
 uploads/
 _store/
+/tauri-app
