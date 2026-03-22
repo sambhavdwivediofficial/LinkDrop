@@ -16,6 +16,10 @@ const io     = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 // ── Frontend serve karo (client/dist folder) ─────────────────────────────────
 // app.use(express.static(path.join(__dirname, "../client/dist")));
 // app.get("*", (req, res) => {

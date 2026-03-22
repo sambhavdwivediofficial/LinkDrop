@@ -1,0 +1,22 @@
+name: Keep Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Render Server
+        run: |
+          SLEEP=$(( ( RANDOM % 60 )  + 1 ))
+          echo "Sleeping for $SLEEP seconds..."
+          sleep $SLEEP
+
+          curl -I -s -L --max-time 30 \
+          https://linkdrop-server.onrender.com/health
+
+          echo "Ping sent at $(date)"
