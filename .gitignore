@@ -30,3 +30,4 @@ Thumbs.db
 uploads/
 _store/
 /tauri-app
+/tauri-mac
