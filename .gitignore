@@ -29,5 +29,5 @@ Thumbs.db
 *.sln
 uploads/
 _store/
-/tauri-app
+/tauri-win
 /tauri-mac
