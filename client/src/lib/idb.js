@@ -1,3 +1,4 @@
+//idb.js
 const DB_NAME    = "linkdrop_v1";
 const STORE_NAME = "received";
 const DB_VERSION = 1;

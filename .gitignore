@@ -31,3 +31,4 @@ uploads/
 _store/
 /tauri-win
 /tauri-mac
+/lfa.json
