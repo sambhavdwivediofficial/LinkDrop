@@ -24,8 +24,8 @@ admin.initializeApp({
 const sessions = new Map();
 const SESSION_DURATION_MS = 4 * 24 * 60 * 60 * 1000; // 4 days
 
-// Cleanup expired sessions + delete from Firebase every hour
-setInterval(async () => {
+// Cleanup on every request — works even when server wakes from sleep
+async function cleanupExpiredSessions() {
   const now = Date.now();
   for (const [token, data] of sessions) {
     if (data.expiresAt <= now) {
@@ -33,7 +33,7 @@ setInterval(async () => {
       try { await admin.auth().deleteUser(data.uid); } catch {}
     }
   }
-}, 60 * 60 * 1000);
+}
 
 // ── Express + Socket.IO ───────────────────────────────────────────────────
 const app    = express();
@@ -69,6 +69,8 @@ function requireAuth(req, res, next) {
 
 // ── POST /api/auth/verify ─────────────────────────────────────────────────
 app.post("/api/auth/verify", async (req, res) => {
+  await cleanupExpiredSessions();
+
   const { idToken } = req.body;
   if (!idToken) return res.status(400).json({ error: "idToken is required." });
 
@@ -88,7 +90,8 @@ app.post("/api/auth/verify", async (req, res) => {
 });
 
 // ── GET /api/auth/session ─────────────────────────────────────────────────
-app.get("/api/auth/session", requireAuth, (req, res) => {
+app.get("/api/auth/session", requireAuth, async (req, res) => {
+  await cleanupExpiredSessions();
   return res.json({
     uid: req.session.uid, email: req.session.email, expiresAt: req.session.expiresAt,
   });
