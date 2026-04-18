@@ -17,16 +17,45 @@ if (!getApps().length) initializeApp(firebaseConfig);
 const auth     = getAuth();
 const provider = new GoogleAuthProvider();
 
+// LinkDrop features extracted from the repo
+const FEATURES = [
+  "P2P Direct Transfer",
+  "End‑to‑End Encryption",
+  "Zero Server Storage",
+  "WebRTC Data Channels",
+  "Room‑based Sharing",
+  "QR Auto‑Discovery",
+  "Multi‑file Support",
+  "No Sign‑up Required",
+  "Cross‑platform",
+  "Lightning Fast",
+  "Resumable Transfers",
+  "Privacy First",
+];
+
+// Animated text component that replays animation on text change
+const AnimatedFeatureValue = ({ text }) => {
+  const [key, setKey] = useState(0);
+  useEffect(() => {
+    setKey(prev => prev + 1);
+  }, [text]);
+  return (
+    <span key={key} className="feature-animate">{text}</span>
+  );
+};
+
 export default function LoginPage() {
   const navigate  = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
+  const currentYear = new Date().getFullYear();
 
-  // Redirect destination stored in sessionStorage (not URL)
   const redirectTo = sessionStorage.getItem("ld_redirect") || "/";
 
+  // Feature indices for each of the 4 cards
+  const [featureIndices, setFeatureIndices] = useState([0, 1, 2, 3]);
+
   useEffect(() => {
-    // Already logged in? Skip login
     const raw = localStorage.getItem("ld_session");
     if (!raw) return;
     try {
@@ -38,6 +67,14 @@ export default function LoginPage() {
     } catch {
       localStorage.removeItem("ld_session");
     }
+  }, []);
+
+  // Cycle through features every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFeatureIndices(prev => prev.map(idx => (idx + 1) % FEATURES.length));
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleGoogleLogin = async () => {
@@ -78,8 +115,18 @@ export default function LoginPage() {
     }
   };
 
+  const preventContextMenu = (e) => e.preventDefault();
+
+  // Card labels for the grid
+  const cardLabels = ["TRANSFER", "SECURITY", "PRIVACY", "SPEED"];
+
   return (
-    <div className="login-container">
+    <div 
+      className="login-container" 
+      onContextMenu={preventContextMenu}
+    >
+      <div className="login-backdrop" />
+
       {loading && (
         <div className="shr-creating-overlay">
           <div className="shr-creating-box">
@@ -97,7 +144,17 @@ export default function LoginPage() {
       )}
 
       <header className="login-header">
-        <span className="login-logo">LINKDROP</span>
+        <div className="login-header-left">
+          <span className="login-logo">LINKDROP</span>
+          <a 
+            href="https://peerlink.in" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="login-powered"
+          >
+            by PeerLink
+          </a>
+        </div>
         <span className="login-mode">SECURE ACCESS</span>
       </header>
 
@@ -124,37 +181,54 @@ export default function LoginPage() {
             <div className="login-error login-fade-up-2">⚠ {error}</div>
           )}
 
-          <div className="login-divider login-fade-up-2">
-            <div className="login-divider-line" />
-            <div className="login-divider-text">SECURITY INFO</div>
-            <div className="login-divider-line" />
-          </div>
-
-          <div className="login-info-grid login-fade-up-3">
-            <div className="login-info-card">
-              <div className="login-info-label">SESSION</div>
-              <div className="login-info-value">Auto-logout after <span>4 days</span></div>
-            </div>
-            <div className="login-info-card">
-              <div className="login-info-label">TRANSFER</div>
-              <div className="login-info-value"><span>P2P Direct</span> — zero server storage</div>
-            </div>
-            <div className="login-info-card">
-              <div className="login-info-label">AUTH</div>
-              <div className="login-info-value"><span>Google OAuth</span> via Firebase</div>
-            </div>
-            <div className="login-info-card">
-              <div className="login-info-label">ACCESS</div>
-              <div className="login-info-value">Token verified <span>server-side</span></div>
-            </div>
+          {/* Dynamic Feature Grid — replaces old security info */}
+          <div className="login-feature-grid login-fade-up-3">
+            {cardLabels.map((label, idx) => (
+              <div key={idx} className="login-feature-card">
+                <div className="login-feature-label">{label}</div>
+                <div className="login-feature-value">
+                  <AnimatedFeatureValue text={FEATURES[featureIndices[idx]]} />
+                </div>
+              </div>
+            ))}
           </div>
 
         </div>
       </main>
 
       <footer className="login-footer">
-        <span>LINKDROP © {new Date().getFullYear()}</span>
-        <span>P2P · ZERO SERVER STORAGE</span>
+        <div className="footer-left">
+          <span className="footer-brand">LINKDROP</span>
+          <a 
+            href="https://peerlink.in" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="footer-powered"
+          >
+            by PeerLink
+          </a>
+        </div>
+
+        <div className="footer-center">
+          <div className="footer-creator-line">
+            Made by{" "}
+            <a 
+              href="https://sambhavdwivedi.in" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="footer-creator-link"
+            >
+              Sambhav Dwivedi
+            </a>
+          </div>
+          <div className="footer-copyright">
+            Copyright © {currentYear} PeerLink
+          </div>
+        </div>
+
+        <div className="footer-right">
+          <span className="footer-info">P2P · E2EE · ZERO KNOWLEDGE</span>
+        </div>
       </footer>
     </div>
   );
