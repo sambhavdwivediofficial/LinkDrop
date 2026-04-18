@@ -29,9 +29,9 @@ export default function AuthGuard({ children }) {
       }
 
       try {
-        const res = await fetch("/api/auth/session", {
-          headers: { "Authorization": `Bearer ${session.token}` },
-        });
+        const res = await fetch(`${import.meta.env.VITE_SIGNAL_URL}/api/auth/session`, {
+         headers: { "Authorization": `Bearer ${session.token}` },
+       });
         if (!res.ok) {
           localStorage.removeItem(SESSION_KEY);
           return redirectToLogin();

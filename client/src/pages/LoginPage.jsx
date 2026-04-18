@@ -47,7 +47,7 @@ export default function LoginPage() {
       const result  = await signInWithPopup(auth, provider);
       const idToken = await result.user.getIdToken();
 
-      const res = await fetch("/api/auth/verify", {
+      const res = await fetch(`${import.meta.env.VITE_SIGNAL_URL}/api/auth/verify`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ idToken }),
