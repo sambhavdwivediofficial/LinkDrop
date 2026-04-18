@@ -32,3 +32,4 @@ _store/
 /tauri-win
 /tauri-mac
 /lfa.json
+/client/netlify.toml
