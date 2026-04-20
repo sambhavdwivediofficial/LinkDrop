@@ -58,6 +58,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Health check (self-ping uses this to prevent Render sleep) ────────────
+app.get("/health", (req, res) => {
+  res.json({ ok: true, uptime: Date.now() - stats.serverStartTime });
+});
+
 // ── Auth middleware ───────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
   const auth  = req.headers["authorization"] || "";
@@ -148,7 +153,6 @@ app.delete("/admin/session/:uid", requireAdmin, (req, res) => {
 // DELETE /admin/firebase/:uid — delete user from Firebase
 app.delete("/admin/firebase/:uid", requireAdmin, async (req, res) => {
   const { uid } = req.params;
-  // Also remove from sessions
   for (const [token, data] of sessions) {
     if (data.uid === uid) sessions.delete(token);
   }
@@ -322,6 +326,12 @@ io.on("connection", (socket) => {
   });
 });
 
-// ── Start ─────────────────────────────────────────────────────────────────
+// ── Start + Self-ping to prevent Render sleep ─────────────────────────────
 const PORT = process.env.PORT || 5000;
-server.listen(PORT);
+server.listen(PORT, () => {
+  // Render sets RENDER_EXTERNAL_URL automatically — no need to add manually
+  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  setInterval(async () => {
+    try { await fetch(`${SELF_URL}/health`); } catch {}
+  }, 10 * 60 * 1000); // ping every 10 minutes
+});
