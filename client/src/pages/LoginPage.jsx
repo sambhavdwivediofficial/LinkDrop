@@ -178,9 +178,9 @@ export default function LoginPage() {
       <header className="login-header">
         <div className="login-header-left">
           <span className="login-logo">LINKDROP</span>
-          <a href="https://peerlink.in" target="_blank" rel="noopener noreferrer" className="login-powered">
+          {/* <a href="https://peerlink.in" target="_blank" rel="noopener noreferrer" className="login-powered">
             by PeerLink
-          </a>
+          </a> */}
         </div>
         <span className="login-mode">SECURE ACCESS</span>
       </header>
@@ -223,7 +223,7 @@ export default function LoginPage() {
       <footer className="login-footer">
         <div className="footer-left">
           <span className="footer-brand">LINKDROP</span>
-          <a href="https://peerlink.in" target="_blank" rel="noopener noreferrer" className="footer-powered">
+          <a href="https://peerlink.in" target="_blank" rel="noopener noreferrer" className="login-powered">
             by PeerLink
           </a>
         </div>
