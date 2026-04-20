@@ -1,5 +1,5 @@
 // src/pages/LoginPage.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { initializeApp, getApps } from "firebase/app";
@@ -39,30 +39,117 @@ const AnimatedFeatureValue = ({ text }) => {
   return <span key={key} className="feature-animate">{text}</span>;
 };
 
-// ── Admin Toast ────────────────────────────────────────────────────────────
+// ── Admin Toast (Fixed Timer) ────────────────────────────────────────────────────
 function AdminToast({ message, onClose }) {
+  const timerRef = useRef(null);
+
   useEffect(() => {
-    const t = setTimeout(onClose, 5000);
-    return () => clearTimeout(t);
-  }, []);
+    // Clear any existing timer
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Set new 30-second timer
+    timerRef.current = setTimeout(() => {
+      onClose();
+    }, 30000); // exactly 30 seconds
+
+    // Cleanup on unmount or before re-run
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [message]); // Only depend on message, not onClose
+
   return (
-    <div style={{
-      position: "fixed", bottom: 24, right: 24, zIndex: 99999,
-      background: "rgba(0,0,0,0.95)", border: "1px solid rgba(108,108,255,0.6)",
-      padding: "14px 20px", maxWidth: 360, fontSize: 13,
-      color: "#c0d0ff", backdropFilter: "blur(8px)",
-      display: "flex", alignItems: "flex-start", gap: 12,
-      borderRadius: 4, boxShadow: "0 0 20px rgba(108,108,255,0.15)",
-    }}>
-      <span style={{ fontSize: 18, flexShrink: 0 }}></span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 10, letterSpacing: 2, color: "#6c6cff", marginBottom: 4 }}>ADMIN MESSAGE</div>
-        <div style={{ color: "#eee", lineHeight: 1.5 }}>{message}</div>
+    <div
+      style={{
+        position: "fixed",
+        top: 24,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 99999,
+        width: "fit-content",
+        maxWidth: "90%",
+        minWidth: 280,
+        display: "flex",
+        flexDirection: "column",
+        borderRadius: 6,
+        background: "rgba(0,0,0,0.95)",
+        backdropFilter: "blur(8px)",
+        border: "1px solid rgba(108,108,255,0.4)",
+        // boxShadow: "0 0 20px rgba(108,108,255,0.15)",
+        padding: "0px",
+        color: "#eee",
+        fontSize: 14,
+        wordBreak: "break-word",
+      }}
+    >
+      {/* Top row: ADMIN MESSAGE + close button */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 14px 4px 14px",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            letterSpacing: 2,
+            color: "#6c6cff",
+            fontWeight: 500,
+          }}
+        >
+          ADMIN MESSAGE
+        </span>
+        <button
+          onClick={onClose}
+          style={{
+            background: "rgba(220, 40, 40, 0.9)",
+            border: "none",
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: "bold",
+            flexShrink: 0,
+            padding: 0,
+            lineHeight: 1,
+            boxShadow: "0 0 6px rgba(220,40,40,0.5)",
+            transition: "background 0.2s",
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.background = "rgba(220,40,40,0.9)")}
+          onMouseOut={(e) => (e.currentTarget.style.background = "rgba(224, 11, 11, 0.43)")}
+        >
+          ✕
+        </button>
       </div>
-      <button onClick={onClose} style={{
-        background: "none", border: "none", color: "#888",
-        cursor: "pointer", fontSize: 16, flexShrink: 0, padding: 0
-      }}>✕</button>
+
+      {/* Message box with thin border */}
+      <div
+        style={{
+          margin: "4px 14px 12px 14px",
+          padding: "12px 14px",
+          border: "1px solid rgba(108,108,255,0.25)",
+          borderRadius: 4,
+          background: "rgba(0,0,0,0.2)",
+          color: "#ffffff",
+          fontSize: 14,
+          lineHeight: 1.5,
+        }}
+      >
+        {message}
+      </div>
     </div>
   );
 }
@@ -71,7 +158,7 @@ export default function LoginPage() {
   const navigate  = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
-  const [adminToast, setAdminToast] = useState(null);
+  const [toast, setToast] = useState({ visible: false, message: "" });
   const currentYear = new Date().getFullYear();
   const redirectTo = sessionStorage.getItem("ld_redirect") || "/";
   const [featureIndices, setFeatureIndices] = useState([0, 1, 2, 3]);
@@ -83,7 +170,7 @@ export default function LoginPage() {
       adminSocket.emit("register-page", { page: "login", uid: null });
     });
     adminSocket.on("admin-broadcast", ({ message }) => {
-      setAdminToast(message);
+      setToast({ visible: true, message });
     });
     return () => adminSocket.disconnect();
   }, []);
@@ -155,8 +242,8 @@ export default function LoginPage() {
       <div className="login-backdrop" />
 
       {/* Admin broadcast toast */}
-      {adminToast && (
-        <AdminToast message={adminToast} onClose={() => setAdminToast(null)} />
+      {toast.visible && (
+        <AdminToast message={toast.message} onClose={() => setToast({ visible: false, message: "" })} />
       )}
 
       {loading && (
