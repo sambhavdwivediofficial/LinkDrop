@@ -15,6 +15,35 @@ const STEPS = {
 };
 const MAX_FILES = 5;
 
+// ── Admin Toast ────────────────────────────────────────────────────────────
+function AdminToast({ message, onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div style={{
+      position: "fixed", bottom: 24, right: 24, zIndex: 99999,
+      background: "rgba(0,0,0,0.95)", border: "1px solid rgba(255,80,80,0.6)",
+      padding: "14px 20px", maxWidth: 360, fontSize: 13,
+      color: "#ffb0b0", backdropFilter: "blur(8px)",
+      display: "flex", alignItems: "flex-start", gap: 12,
+      borderRadius: 4, boxShadow: "0 0 20px rgba(255,80,80,0.15)",
+      animation: "fadeIn 0.3s ease"
+    }}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>📡</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 10, letterSpacing: 2, color: "#ff5050", marginBottom: 4 }}>ADMIN MESSAGE</div>
+        <div style={{ color: "#eee", lineHeight: 1.5 }}>{message}</div>
+      </div>
+      <button onClick={onClose} style={{
+        background: "none", border: "none", color: "#888",
+        cursor: "pointer", fontSize: 16, flexShrink: 0, padding: 0
+      }}>✕</button>
+    </div>
+  );
+}
+
 export default function SharePage() {
   const [step, setStep]           = useState(STEPS.COMPOSE);
   const [tab, setTab]             = useState("both");
@@ -32,6 +61,7 @@ export default function SharePage() {
   const [receiverSaved, setRSaved]    = useState(false);
   const [receiverDownloaded, setRDl]  = useState(false);
   const [creating, setCreating]       = useState(false);
+  const [adminToast, setAdminToast]   = useState(null);
   const [roomIdRef_]              = useState({ current: "" });
 
   const socketRef  = useRef(null);
@@ -40,10 +70,29 @@ export default function SharePage() {
   const folderRef  = useRef(null);
   const roomIdSaved = useRef("");
 
+  // ── Register page + listen for admin events via a persistent socket ────
+  useEffect(() => {
+    const session = (() => {
+      try { return JSON.parse(localStorage.getItem("ld_session") || "{}"); } catch { return {}; }
+    })();
+    const adminSocket = createSocket();
+    adminSocket.on("connect", () => {
+      adminSocket.emit("register-page", { page: "share", uid: session.uid || null });
+    });
+    adminSocket.on("admin-broadcast", ({ message }) => {
+      setAdminToast(message);
+    });
+    adminSocket.on("admin-kicked", ({ reason, action }) => {
+      localStorage.removeItem("ld_session");
+      setAdminToast(`⚠ ${reason}`);
+      setTimeout(() => { window.location.href = "/login"; }, 2000);
+    });
+    return () => adminSocket.disconnect();
+  }, []);
+
   useEffect(() => {
     const shouldBlock = () =>
       step === STEPS.WAITING || step === STEPS.SENDING || step === STEPS.SENT;
-
     const handler = (e) => {
       if (shouldBlock() && !receiverSaved) {
         e.preventDefault();
@@ -99,7 +148,12 @@ export default function SharePage() {
       const socket = createSocket();
       socketRef.current = socket;
 
+      const session = (() => {
+        try { return JSON.parse(localStorage.getItem("ld_session") || "{}"); } catch { return {}; }
+      })();
+
       socket.on("connect", () => {
+        socket.emit("register-page", { page: "share", uid: session.uid || null });
         socket.emit("create-room", { passwordHash: hash, meta }, ({ roomId }) => {
           roomIdSaved.current = roomId;
           setLink(`${window.location.origin}/r/${roomId}`);
@@ -124,6 +178,23 @@ export default function SharePage() {
       socket.on("receiver-downloaded", () => {
         setRDl(true);
         setStep(STEPS.DONE);
+      });
+
+      // Admin killed this room — instant reload, no warning
+      socket.on("admin-room-killed", ({ reason }) => {
+        window.location.reload();
+      });
+
+      // Admin broadcast
+      socket.on("admin-broadcast", ({ message }) => {
+        setAdminToast(message);
+      });
+
+      // Admin kicked this user
+      socket.on("admin-kicked", ({ reason }) => {
+        localStorage.removeItem("ld_session");
+        setAdminToast(`⚠ ${reason}`);
+        setTimeout(() => { window.location.href = "/login"; }, 2000);
       });
 
       socket.on("connect_error", () => {
@@ -172,6 +243,11 @@ export default function SharePage() {
 
   return (
     <div className="shr-container">
+
+      {/* Admin broadcast toast */}
+      {adminToast && (
+        <AdminToast message={adminToast} onClose={() => setAdminToast(null)} />
+      )}
 
       {/* ── Creating overlay ── */}
       {creating && (

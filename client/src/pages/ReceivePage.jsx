@@ -18,6 +18,35 @@ const STEPS = {
   ERROR:      "error"
 };
 
+// ── Admin Toast ────────────────────────────────────────────────────────────
+function AdminToast({ message, onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div style={{
+      position: "fixed", bottom: 24, right: 24, zIndex: 99999,
+      background: "rgba(0,0,0,0.95)", border: "1px solid rgba(255,80,80,0.6)",
+      padding: "14px 20px", maxWidth: 360, fontSize: 13,
+      color: "#ffb0b0", backdropFilter: "blur(8px)",
+      display: "flex", alignItems: "flex-start", gap: 12,
+      borderRadius: 4, boxShadow: "0 0 20px rgba(255,80,80,0.15)",
+      animation: "fadeIn 0.3s ease"
+    }}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>📡</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 10, letterSpacing: 2, color: "#ff5050", marginBottom: 4 }}>ADMIN MESSAGE</div>
+        <div style={{ color: "#eee", lineHeight: 1.5 }}>{message}</div>
+      </div>
+      <button onClick={onClose} style={{
+        background: "none", border: "none", color: "#888",
+        cursor: "pointer", fontSize: 16, flexShrink: 0, padding: 0
+      }}>✕</button>
+    </div>
+  );
+}
+
 export default function ReceivePage() {
   const { roomId }          = useParams();
   const [step, setStep]     = useState(STEPS.LOADING);
@@ -33,9 +62,30 @@ export default function ReceivePage() {
   const [fromCache, setFromCache]  = useState(false);
   const [allDownloaded, setAllDl]  = useState(false);
   const [unlocking, setUnlocking]  = useState(false);
+  const [adminToast, setAdminToast] = useState(null);
   const downloadedCount = useRef(0);
   const socketRef   = useRef(null);
   const receiverRef = useRef(null);
+
+  // ── Register page + persistent admin event listener ───────────────────
+  useEffect(() => {
+    const session = (() => {
+      try { return JSON.parse(localStorage.getItem("ld_session") || "{}"); } catch { return {}; }
+    })();
+    const adminSocket = createSocket();
+    adminSocket.on("connect", () => {
+      adminSocket.emit("register-page", { page: "receive", uid: session.uid || null });
+    });
+    adminSocket.on("admin-broadcast", ({ message }) => {
+      setAdminToast(message);
+    });
+    adminSocket.on("admin-kicked", ({ reason }) => {
+      localStorage.removeItem("ld_session");
+      setAdminToast(`⚠ ${reason}`);
+      setTimeout(() => { window.location.href = "/login"; }, 2000);
+    });
+    return () => adminSocket.disconnect();
+  }, []);
 
   useEffect(() => {
     loadSession(roomId).then(cached => {
@@ -50,7 +100,12 @@ export default function ReceivePage() {
       const socket = createSocket();
       socketRef.current = socket;
 
+      const session = (() => {
+        try { return JSON.parse(localStorage.getItem("ld_session") || "{}"); } catch { return {}; }
+      })();
+
       socket.on("connect", () => {
+        socket.emit("register-page", { page: "receive", uid: session.uid || null });
         socket.emit("check-room", { roomId }, ({ exists }) => {
           if (!exists) {
             socket.disconnect();
@@ -91,7 +146,12 @@ export default function ReceivePage() {
       const socket = createSocket();
       socketRef.current = socket;
 
+      const session = (() => {
+        try { return JSON.parse(localStorage.getItem("ld_session") || "{}"); } catch { return {}; }
+      })();
+
       socket.on("connect", () => {
+        socket.emit("register-page", { page: "receive", uid: session.uid || null });
         socket.emit("join-room", { roomId, passwordHash: hash }, async (res) => {
           if (res.error) {
             setUnlocking(false);
@@ -150,11 +210,29 @@ export default function ReceivePage() {
           receiverRef.current = receiver;
 
           socket.on("signal", ({ data }) => receiver.receiveSignal(data));
+
           socket.on("host-left", () => {
             if (step !== STEPS.DONE && step !== STEPS.RECEIVING) {
               setError("Sender went offline.");
               setStep(STEPS.ERROR);
             }
+          });
+
+          // Admin killed this room — instant reload
+          socket.on("admin-room-killed", () => {
+            window.location.reload();
+          });
+
+          // Admin broadcast
+          socket.on("admin-broadcast", ({ message }) => {
+            setAdminToast(message);
+          });
+
+          // Admin kicked this user
+          socket.on("admin-kicked", ({ reason }) => {
+            localStorage.removeItem("ld_session");
+            setAdminToast(`⚠ ${reason}`);
+            setTimeout(() => { window.location.href = "/login"; }, 2000);
           });
         });
       });
@@ -197,6 +275,11 @@ export default function ReceivePage() {
   return (
     <div className="rcv-container">
 
+      {/* Admin broadcast toast */}
+      {adminToast && (
+        <AdminToast message={adminToast} onClose={() => setAdminToast(null)} />
+      )}
+
       {/* ── Unlocking overlay ── */}
       {unlocking && (
         <div className="shr-creating-overlay">
@@ -222,7 +305,6 @@ export default function ReceivePage() {
       <main className="rcv-main">
         <div className="rcv-wrap">
 
-          {/* LOADING */}
           {step === STEPS.LOADING && (
             <div className="rcv-loading">
               <div className="rcv-spinner" />
@@ -230,7 +312,6 @@ export default function ReceivePage() {
             </div>
           )}
 
-          {/* NOT FOUND */}
           {step === STEPS.NOT_FOUND && (
             <div className="rcv-not-found rcv-fade-up">
               <div className="rcv-404">404</div>
@@ -239,13 +320,10 @@ export default function ReceivePage() {
                 This link may have expired, the sender may have closed the page,<br/>
                 or the link is incorrect.
               </p>
-              <a href="/">
-                <button className="rcv-btn-secondary rcv-btn-large">GO BACK</button>
-              </a>
+              <a href="/"><button className="rcv-btn-secondary rcv-btn-large">GO BACK</button></a>
             </div>
           )}
 
-          {/* LOCK */}
           {step === STEPS.LOCK && (
             <div className="rcv-lock rcv-fade-up">
               <div className="rcv-lock-header">
@@ -254,7 +332,6 @@ export default function ReceivePage() {
                 </h1>
                 <p className="rcv-lock-sub">ENTER PASSWORD TO ACCESS CONTENT</p>
               </div>
-
               <div className="rcv-input-group">
                 <div className="rcv-input-label">
                   <IconLock size={13} />
@@ -275,11 +352,9 @@ export default function ReceivePage() {
                   </button>
                 </div>
               </div>
-
               <button className="rcv-btn-primary" onClick={handleUnlock} disabled={unlocking}>
                 <IconLock size={18} /> UNLOCK
               </button>
-
               {error && (
                 <div className="rcv-error">
                   <IconAlert size={14} /> {error}
@@ -288,7 +363,6 @@ export default function ReceivePage() {
             </div>
           )}
 
-          {/* CONNECTING */}
           {step === STEPS.CONNECTING && (
             <div className="rcv-connecting rcv-fade-up">
               <div className="rcv-spinner" />
@@ -314,7 +388,6 @@ export default function ReceivePage() {
             </div>
           )}
 
-          {/* RECEIVING */}
           {step === STEPS.RECEIVING && (
             <div className="rcv-receiving rcv-fade-up">
               <div className="rcv-receiving-header">
@@ -334,7 +407,6 @@ export default function ReceivePage() {
             </div>
           )}
 
-          {/* DONE */}
           {step === STEPS.DONE && (
             <div className="rcv-done rcv-fade-up">
               <div className="rcv-done-badge">
@@ -347,7 +419,6 @@ export default function ReceivePage() {
                 </div>
               </div>
               <h2 className="rcv-heading rcv-heading-done">DOWNLOAD</h2>
-
               {receivedFiles.length > 0 && (
                 <div className="rcv-card">
                   <div className="rcv-card-label">Files ({receivedFiles.length})</div>
@@ -372,7 +443,6 @@ export default function ReceivePage() {
                   )}
                 </div>
               )}
-
               {receivedText !== null && (
                 <div className="rcv-card">
                   <div className="rcv-text-header">
@@ -388,28 +458,22 @@ export default function ReceivePage() {
                       {copied ? "COPIED" : "COPY"}
                     </button>
                   </div>
-                  <div className="rcv-text-content">
-                    {receivedText}
-                  </div>
+                  <div className="rcv-text-content">{receivedText}</div>
                 </div>
               )}
-
               <a href="/" className="rcv-more-link">
                 <button className="rcv-btn-secondary rcv-btn-block">+ Receive More</button>
               </a>
             </div>
           )}
 
-          {/* ERROR */}
           {step === STEPS.ERROR && (
             <div className="rcv-error-page rcv-fade-up">
               <h2 className="rcv-heading rcv-heading-error">ERROR</h2>
               <div className="rcv-error-box">
                 <IconAlert size={14} /> {typeof error === "string" && error.includes("User-Initiated Abort") ? "Connection closed. Please reload the page." : error}
               </div>
-              <a href="/">
-                <button className="rcv-btn-secondary rcv-btn-large">GO BACK</button>
-              </a>
+              <a href="/"><button className="rcv-btn-secondary rcv-btn-large">GO BACK</button></a>
             </div>
           )}
 

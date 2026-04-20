@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { initializeApp, getApps } from "firebase/app";
+import { createSocket } from "../lib/peer";
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,7 +18,6 @@ if (!getApps().length) initializeApp(firebaseConfig);
 const auth     = getAuth();
 const provider = new GoogleAuthProvider();
 
-// LinkDrop features extracted from the repo
 const FEATURES = [
   "P2P Direct Transfer",
   "End‑to‑End Encryption",
@@ -33,27 +33,60 @@ const FEATURES = [
   "Privacy First",
 ];
 
-// Animated text component that replays animation on text change
 const AnimatedFeatureValue = ({ text }) => {
   const [key, setKey] = useState(0);
-  useEffect(() => {
-    setKey(prev => prev + 1);
-  }, [text]);
-  return (
-    <span key={key} className="feature-animate">{text}</span>
-  );
+  useEffect(() => { setKey(prev => prev + 1); }, [text]);
+  return <span key={key} className="feature-animate">{text}</span>;
 };
+
+// ── Admin Toast ────────────────────────────────────────────────────────────
+function AdminToast({ message, onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 5000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div style={{
+      position: "fixed", bottom: 24, right: 24, zIndex: 99999,
+      background: "rgba(0,0,0,0.95)", border: "1px solid rgba(108,108,255,0.6)",
+      padding: "14px 20px", maxWidth: 360, fontSize: 13,
+      color: "#c0d0ff", backdropFilter: "blur(8px)",
+      display: "flex", alignItems: "flex-start", gap: 12,
+      borderRadius: 4, boxShadow: "0 0 20px rgba(108,108,255,0.15)",
+    }}>
+      <span style={{ fontSize: 18, flexShrink: 0 }}>📡</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 10, letterSpacing: 2, color: "#6c6cff", marginBottom: 4 }}>ADMIN MESSAGE</div>
+        <div style={{ color: "#eee", lineHeight: 1.5 }}>{message}</div>
+      </div>
+      <button onClick={onClose} style={{
+        background: "none", border: "none", color: "#888",
+        cursor: "pointer", fontSize: 16, flexShrink: 0, padding: 0
+      }}>✕</button>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const navigate  = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
+  const [adminToast, setAdminToast] = useState(null);
   const currentYear = new Date().getFullYear();
-
   const redirectTo = sessionStorage.getItem("ld_redirect") || "/";
-
-  // Feature indices for each of the 4 cards
   const [featureIndices, setFeatureIndices] = useState([0, 1, 2, 3]);
+
+  // ── Register as login page + listen for admin broadcast ───────────────
+  useEffect(() => {
+    const adminSocket = createSocket();
+    adminSocket.on("connect", () => {
+      adminSocket.emit("register-page", { page: "login", uid: null });
+    });
+    adminSocket.on("admin-broadcast", ({ message }) => {
+      setAdminToast(message);
+    });
+    return () => adminSocket.disconnect();
+  }, []);
 
   useEffect(() => {
     const raw = localStorage.getItem("ld_session");
@@ -69,7 +102,6 @@ export default function LoginPage() {
     }
   }, []);
 
-  // Cycle through features every second
   useEffect(() => {
     const interval = setInterval(() => {
       setFeatureIndices(prev => prev.map(idx => (idx + 1) % FEATURES.length));
@@ -116,16 +148,16 @@ export default function LoginPage() {
   };
 
   const preventContextMenu = (e) => e.preventDefault();
-
-  // Card labels for the grid
   const cardLabels = ["TRANSFER", "SECURITY", "PRIVACY", "SPEED"];
 
   return (
-    <div 
-      className="login-container" 
-      onContextMenu={preventContextMenu}
-    >
+    <div className="login-container" onContextMenu={preventContextMenu}>
       <div className="login-backdrop" />
+
+      {/* Admin broadcast toast */}
+      {adminToast && (
+        <AdminToast message={adminToast} onClose={() => setAdminToast(null)} />
+      )}
 
       {loading && (
         <div className="shr-creating-overlay">
@@ -146,12 +178,7 @@ export default function LoginPage() {
       <header className="login-header">
         <div className="login-header-left">
           <span className="login-logo">LINKDROP</span>
-          <a 
-            href="https://peerlink.in" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="login-powered"
-          >
+          <a href="https://peerlink.in" target="_blank" rel="noopener noreferrer" className="login-powered">
             by PeerLink
           </a>
         </div>
@@ -160,7 +187,6 @@ export default function LoginPage() {
 
       <main className="login-main">
         <div className="login-wrap">
-
           <div className="login-fade-up">
             <h1 className="login-heading">
               SIGN<br />IN<span className="login-cursor">_</span>
@@ -181,7 +207,6 @@ export default function LoginPage() {
             <div className="login-error login-fade-up-2">⚠ {error}</div>
           )}
 
-          {/* Dynamic Feature Grid — replaces old security info */}
           <div className="login-feature-grid login-fade-up-3">
             {cardLabels.map((label, idx) => (
               <div key={idx} className="login-feature-card">
@@ -192,40 +217,25 @@ export default function LoginPage() {
               </div>
             ))}
           </div>
-
         </div>
       </main>
 
       <footer className="login-footer">
         <div className="footer-left">
           <span className="footer-brand">LINKDROP</span>
-          <a 
-            href="https://peerlink.in" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="footer-powered"
-          >
+          <a href="https://peerlink.in" target="_blank" rel="noopener noreferrer" className="footer-powered">
             by PeerLink
           </a>
         </div>
-
         <div className="footer-center">
           <div className="footer-creator-line">
             Made by{" "}
-            <a 
-              href="https://sambhavdwivedi.in" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="footer-creator-link"
-            >
+            <a href="https://sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" className="footer-creator-link">
               Sambhav Dwivedi
             </a>
           </div>
-          <div className="footer-copyright">
-            Copyright © {currentYear} PeerLink
-          </div>
+          <div className="footer-copyright">Copyright © {currentYear} PeerLink</div>
         </div>
-
         <div className="footer-right">
           <span className="footer-info">P2P · E2EE · ZERO KNOWLEDGE</span>
         </div>

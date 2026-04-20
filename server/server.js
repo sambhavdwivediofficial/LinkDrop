@@ -32,6 +32,10 @@ const stats = {
   serverStartTime:       Date.now(),
 };
 
+// ── Connected socket registry (tracks which page each socket is on) ───────
+// Map<socketId, { page: 'login'|'share'|'receive', uid?: string }>
+const connectedClients = new Map();
+
 // ── Cleanup expired sessions + Firebase delete ────────────────────────────
 async function cleanupExpiredSessions() {
   const now = Date.now();
@@ -90,8 +94,13 @@ function requireAdmin(req, res, next) {
 // ── ADMIN APIs ────────────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════
 
-// GET /admin/stats — server stats
+// GET /admin/stats — server stats + realtime page counts
 app.get("/admin/stats", requireAdmin, (req, res) => {
+  const pageCounts = { login: 0, share: 0, receive: 0, total: 0 };
+  for (const [, info] of connectedClients) {
+    if (info.page && pageCounts[info.page] !== undefined) pageCounts[info.page]++;
+    pageCounts.total++;
+  }
   res.json({
     totalBytesTransferred: stats.totalBytesTransferred,
     totalTransfers:        stats.totalTransfers,
@@ -100,6 +109,7 @@ app.get("/admin/stats", requireAdmin, (req, res) => {
     activeRooms:           rooms.size,
     uptime:                Date.now() - stats.serverStartTime,
     serverStartTime:       stats.serverStartTime,
+    connectedClients:      pageCounts,
   });
 });
 
@@ -136,7 +146,7 @@ app.get("/admin/rooms", requireAdmin, (req, res) => {
   res.json(list);
 });
 
-// DELETE /admin/session/:uid — force logout user (delete session by uid)
+// DELETE /admin/session/:uid — force logout user + kick their socket
 app.delete("/admin/session/:uid", requireAdmin, (req, res) => {
   const { uid } = req.params;
   let found = false;
@@ -146,15 +156,33 @@ app.delete("/admin/session/:uid", requireAdmin, (req, res) => {
       found = true;
     }
   }
+  // Kick all sockets belonging to this uid
+  for (const [socketId, info] of connectedClients) {
+    if (info.uid === uid) {
+      io.to(socketId).emit("admin-kicked", {
+        reason: "You have been signed out by Admin.",
+        action: "logout",
+      });
+    }
+  }
   if (found) return res.json({ ok: true, message: "User force-logged out." });
   res.status(404).json({ error: "Session not found." });
 });
 
-// DELETE /admin/firebase/:uid — delete user from Firebase
+// DELETE /admin/firebase/:uid — delete user from Firebase + kick socket
 app.delete("/admin/firebase/:uid", requireAdmin, async (req, res) => {
   const { uid } = req.params;
   for (const [token, data] of sessions) {
     if (data.uid === uid) sessions.delete(token);
+  }
+  // Kick all sockets belonging to this uid
+  for (const [socketId, info] of connectedClients) {
+    if (info.uid === uid) {
+      io.to(socketId).emit("admin-kicked", {
+        reason: "Your account has been deleted by Admin.",
+        action: "logout",
+      });
+    }
   }
   try {
     await admin.auth().deleteUser(uid);
@@ -164,12 +192,15 @@ app.delete("/admin/firebase/:uid", requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /admin/room/:roomId — force kill a transfer room
+// DELETE /admin/room/:roomId — force kill a transfer room + notify clients
 app.delete("/admin/room/:roomId", requireAdmin, (req, res) => {
   const { roomId } = req.params;
   const room = rooms.get(roomId);
   if (!room) return res.status(404).json({ error: "Room not found." });
-  io.to(roomId).emit("host-left");
+  // Notify everyone in the room to reload instantly
+  io.to(roomId).emit("admin-room-killed", {
+    reason: "Admin has disabled this room.",
+  });
   rooms.delete(roomId);
   res.json({ ok: true, message: "Room killed." });
 });
@@ -192,10 +223,22 @@ app.get("/admin/firebase/users", requireAdmin, async (req, res) => {
   }
 });
 
-// POST /admin/firebase/disable/:uid — disable Firebase user
+// POST /admin/firebase/disable/:uid — disable Firebase user + kick socket
 app.post("/admin/firebase/disable/:uid", requireAdmin, async (req, res) => {
   try {
     await admin.auth().updateUser(req.params.uid, { disabled: true });
+    // Kick their active sessions too
+    for (const [token, data] of sessions) {
+      if (data.uid === req.params.uid) sessions.delete(token);
+    }
+    for (const [socketId, info] of connectedClients) {
+      if (info.uid === req.params.uid) {
+        io.to(socketId).emit("admin-kicked", {
+          reason: "Your account has been disabled by Admin.",
+          action: "logout",
+        });
+      }
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -208,10 +251,19 @@ app.post("/admin/firebase/enable/:uid", requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /admin/broadcast — send message to all connected sockets
+// POST /admin/broadcast — targeted broadcast
+// body: { message, target: 'all'|'login'|'share'|'receive' }
 app.post("/admin/broadcast", requireAdmin, (req, res) => {
-  const { message } = req.body;
-  io.emit("admin-broadcast", { message });
+  const { message, target = "all" } = req.body;
+  if (target === "all") {
+    io.emit("admin-broadcast", { message, target });
+  } else {
+    for (const [socketId, info] of connectedClients) {
+      if (info.page === target) {
+        io.to(socketId).emit("admin-broadcast", { message, target });
+      }
+    }
+  }
   res.json({ ok: true });
 });
 
@@ -259,13 +311,17 @@ const rooms = new Map();
 
 io.on("connection", (socket) => {
 
+  // Client registers which page they're on + their uid
+  socket.on("register-page", ({ page, uid }) => {
+    connectedClients.set(socket.id, { page: page || "unknown", uid: uid || null });
+  });
+
   socket.on("check-room", ({ roomId }, cb) => {
     cb({ exists: rooms.has(roomId) });
   });
 
   socket.on("create-room", ({ passwordHash, meta }, cb) => {
     const roomId = uuidv4().replace(/-/g, "");
-    // Find host email from sessions
     let hostEmail = null;
     for (const [, data] of sessions) {
       if (socket.handshake && data.uid) hostEmail = data.email;
@@ -302,7 +358,6 @@ io.on("connection", (socket) => {
   socket.on("receiver-downloaded", ({ roomId }) => {
     const room = rooms.get(roomId);
     if (room) {
-      // Track stats
       if (room.meta && room.meta.totalSize) {
         stats.totalBytesTransferred += room.meta.totalSize;
       }
@@ -313,6 +368,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    connectedClients.delete(socket.id);
     const roomId = socket.roomId;
     if (!roomId) return;
     const room = rooms.get(roomId);
@@ -329,9 +385,8 @@ io.on("connection", (socket) => {
 // ── Start + Self-ping to prevent Render sleep ─────────────────────────────
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  // Render sets RENDER_EXTERNAL_URL automatically — no need to add manually
   const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
   setInterval(async () => {
     try { await fetch(`${SELF_URL}/health`); } catch {}
-  }, 10 * 60 * 1000); // ping every 10 minutes
+  }, 10 * 60 * 1000);
 });
