@@ -400,7 +400,7 @@ export default function SharePage() {
                       {isDrag ? "Release to drop" : "Drag & drop or click"}
                     </div>
                     <div className="shr-dropzone-hint">
-                      Max {MAX_FILES} files · Any extension · Unlimited size
+                      Max {MAX_FILES} files · Any extension · Zip · Unlimited size
                     </div>
                     <input
                       ref={fileRef}
@@ -411,7 +411,7 @@ export default function SharePage() {
                     />
                   </div>
 
-                  <button
+                  {/* <button
                     className="shr-btn-folder"
                     onClick={() => folderRef.current?.click()}
                   >
@@ -424,7 +424,7 @@ export default function SharePage() {
                       style={{ display: "none" }}
                       onChange={onFolderInput}
                     />
-                  </button>
+                  </button> */}
 
                   {files.length > 0 && (
                     <div className="shr-file-list">
@@ -445,7 +445,7 @@ export default function SharePage() {
                           className="shr-add-more"
                           onClick={() => fileRef.current?.click()}
                         >
-                          + Add More Files ({files.length}/{MAX_FILES})
+                          + Add More Files ({files.length}/{MAX_FILES}) or Zip
                         </button>
                       )}
                     </div>

@@ -557,9 +557,8 @@ export default function ReceivePage() {
             <div className="rcv-error-page rcv-fade-up">
               <h2 className="rcv-heading rcv-heading-error">ERROR</h2>
               <div className="rcv-error-box">
-                <IconAlert size={14} /> {typeof error === "string" && error.includes("User-Initiated Abort") ? "Connection closed. Please reload the page." : error}
-              </div>
-              <a href="/"><button className="rcv-btn-secondary rcv-btn-large">GO BACK</button></a>
+                <IconAlert size={14} /> Connection closed. Please reload the page.</div>
+              {/* <a href="/"><button className="rcv-btn-secondary rcv-btn-large">GO BACK</button></a> */}
             </div>
           )}
 

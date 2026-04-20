@@ -914,7 +914,7 @@ a {
 }
 
 .shr-dropzone:hover {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.718);
   background: rgb(0, 0, 0);
   transform: scale(1.01);
 }
@@ -1036,9 +1036,9 @@ a {
 }
 
 .shr-add-more:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.64);
   color: #fff;
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(236, 234, 234, 0.567);
 }
 
 /* Text section */
