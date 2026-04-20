@@ -54,7 +54,7 @@ function AdminToast({ message, onClose }) {
       display: "flex", alignItems: "flex-start", gap: 12,
       borderRadius: 4, boxShadow: "0 0 20px rgba(108,108,255,0.15)",
     }}>
-      <span style={{ fontSize: 18, flexShrink: 0 }}>📡</span>
+      <span style={{ fontSize: 18, flexShrink: 0 }}></span>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 10, letterSpacing: 2, color: "#6c6cff", marginBottom: 4 }}>ADMIN MESSAGE</div>
         <div style={{ color: "#eee", lineHeight: 1.5 }}>{message}</div>
