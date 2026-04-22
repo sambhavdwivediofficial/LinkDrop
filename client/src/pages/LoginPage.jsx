@@ -53,7 +53,7 @@ function AdminToast({ message, onClose }) {
     // Set new 30-second timer
     timerRef.current = setTimeout(() => {
       onClose();
-    }, 30000); // exactly 30 seconds
+    }, 50000); // exactly 50 seconds
 
     // Cleanup on unmount or before re-run
     return () => {
@@ -68,9 +68,10 @@ function AdminToast({ message, onClose }) {
     <div
       style={{
         position: "fixed",
-        top: 24,
-        left: "50%",
-        transform: "translateX(-50%)",
+        top: 50,
+        right: 10,
+        left: "auto",
+        transform: "none",
         zIndex: 99999,
         width: "fit-content",
         maxWidth: "90%",
