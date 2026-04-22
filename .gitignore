@@ -32,5 +32,6 @@ uploads/
 _store/
 /tauri-win
 /tauri-mac
+/tauri-linux
 /lfa.json
 /client/netlify.toml
