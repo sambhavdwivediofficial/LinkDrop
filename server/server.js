@@ -309,11 +309,11 @@ app.post("/api/auth/logout", requireAuth, (req, res) => {
 
 const rooms = new Map();
 
-// 🔥 Unique Room ID Generator (as provided)
+// Unique Room ID Generator
 function generateUniqueRoomId(rooms) {
   const MIN = 4;
-  const MAX = 18;
-  const MAX_ATTEMPTS_PER_LENGTH = 20;
+  const MAX = 20;
+  const MAX_ATTEMPTS_PER_LENGTH = 30;
 
   let triedLengths = new Set();
 
