@@ -29,6 +29,7 @@ Thumbs.db
 *.njsproj
 *.sln
 uploads/
+/client/public/__
 _store/
 /tauri-win
 /tauri-mac

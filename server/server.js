@@ -22,7 +22,7 @@ admin.initializeApp({
 
 // ── Session store ─────────────────────────────────────────────────────────
 const sessions = new Map();
-const SESSION_DURATION_MS = 4 * 24 * 60 * 60 * 1000; // 4 days
+const SESSION_DURATION_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 
 // ── Global stats ──────────────────────────────────────────────────────────
 const stats = {
@@ -309,6 +309,39 @@ app.post("/api/auth/logout", requireAuth, (req, res) => {
 
 const rooms = new Map();
 
+// 🔥 Unique Room ID Generator (as provided)
+function generateUniqueRoomId(rooms) {
+  const MIN = 7;
+  const MAX = 17;
+  const MAX_ATTEMPTS_PER_LENGTH = 20;
+
+  let triedLengths = new Set();
+
+  while (triedLengths.size < (MAX - MIN + 1)) {
+
+    let availableLengths = [];
+    for (let i = MIN; i <= MAX; i++) {
+      if (!triedLengths.has(i)) availableLengths.push(i);
+    }
+
+    const length = availableLengths[Math.floor(Math.random() * availableLengths.length)];
+    triedLengths.add(length);
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_LENGTH; attempt++) {
+
+      const id = crypto.randomBytes(length)
+        .toString("hex")
+        .slice(0, length);
+
+      if (!rooms.has(id)) {
+        return id;
+      }
+    }
+  }
+
+  throw new Error("Unable to generate unique room ID");
+}
+
 io.on("connection", (socket) => {
 
   // Client registers which page they're on + their uid
@@ -321,7 +354,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("create-room", ({ passwordHash, meta }, cb) => {
-    const roomId = uuidv4().replace(/-/g, "");
+    const roomId = generateUniqueRoomId(rooms);
     let hostEmail = null;
     for (const [, data] of sessions) {
       if (socket.handshake && data.uid) hostEmail = data.email;
