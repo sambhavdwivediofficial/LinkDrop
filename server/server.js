@@ -311,8 +311,8 @@ const rooms = new Map();
 
 // 🔥 Unique Room ID Generator (as provided)
 function generateUniqueRoomId(rooms) {
-  const MIN = 7;
-  const MAX = 17;
+  const MIN = 4;
+  const MAX = 18;
   const MAX_ATTEMPTS_PER_LENGTH = 20;
 
   let triedLengths = new Set();
