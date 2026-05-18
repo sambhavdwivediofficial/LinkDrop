@@ -265,7 +265,7 @@ export default function LoginPage() {
 
       <header className="login-header">
         <div className="login-header-left">
-          <span className="login-logo">LINKDROP</span>
+          <a href="/" className="login-logo">LINKDROP</a>
           {/* <a href="https://peerlink.in" target="_blank" rel="noopener noreferrer" className="login-powered">
             by PeerLink
           </a> */}

@@ -568,6 +568,7 @@ export default function ReceivePage() {
 
       <footer className="rcv-footer">
         <span>LINKDROP © {new Date().getFullYear()}</span>
+        <span>Made by <a href="https://www.sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" style={{ color: "#fff", textDecoration: "none", fontSize: "13px", transition: "0.2s" }} onMouseEnter={(e) => e.target.style.textDecoration = "underline"} onMouseLeave={(e) => e.target.style.textDecoration = "none"}>Sambhav Dwivedi</a></span>
         <span>P2P · ZERO SERVER STORAGE</span>
       </footer>
     </div>

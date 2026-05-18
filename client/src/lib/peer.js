@@ -3,7 +3,29 @@ import { io } from "socket.io-client";
 
 const SIGNAL_URL = import.meta.env.VITE_SIGNAL_URL || "";
 const CHUNK      = 256 * 1024; // 256KB chunks
-const ICE        = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] };
+const ICE = {
+  iceServers: [
+    {
+      urls: [
+        "stun:stun.l.google.com:19302",
+        "stun:stun1.l.google.com:19302"
+      ]
+    },
+
+    {
+      urls: [
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:80?transport=tcp",
+        "turn:openrelay.metered.ca:443",
+        "turns:openrelay.metered.ca:443?transport=tcp"
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    }
+  ],
+
+  iceCandidatePoolSize: 10
+};
 
 export function createSocket() {
   return io(SIGNAL_URL, { transports: ["websocket", "polling"] });

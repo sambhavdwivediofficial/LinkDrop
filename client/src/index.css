@@ -11,6 +11,21 @@
   --glow:    0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
+/* Remove all browser default focus outlines and hover highlights */
+*,
+*:focus,
+*:focus-visible,
+*:focus-within {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Remove tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0) !important;
+  /* tap-highlight-color: rgba(0, 0, 0, 0) !important; */
+}
+
 *,
 *::before,
 *::after {
@@ -110,7 +125,7 @@ a {
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* border-bottom: 1px solid rgba(255, 255, 255, 0.08); */
   height: 60px;
   display: flex;
   align-items: center;
@@ -146,7 +161,7 @@ a {
 .rcv-main {
   flex: 1;
   display: flex;
-  background-color: #131212;
+  background-color: #080707;
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
@@ -700,9 +715,9 @@ a {
 }
 
 .rcv-text-content {
-  background: rgba(30, 30, 30, 0.8);
+  background: rgba(16, 15, 15, 0.8);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.178);
   border-radius: var(--radius);
   padding: 18px;
   font-size: 13px;
@@ -763,7 +778,7 @@ a {
 .shr-header {
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* border-bottom: 1px solid rgba(255, 255, 255, 0.08); */
   height: 60px;
   display: flex;
   align-items: center;
@@ -799,7 +814,7 @@ a {
 .shr-main {
   flex: 1;
   display: flex;
-  background-color: #131212;
+  background-color: #080707;
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
@@ -1201,7 +1216,7 @@ a {
 }
 
 .shr-card {
-  background: rgba(20, 20, 20, 0.7);
+  background: rgba(14, 13, 13, 0.7);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius);
@@ -1704,11 +1719,11 @@ a {
 .login-container {
   position: relative;
   min-height: 100vh;
-  height: 100vh;
+  /* height: 100vh; */
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background: #0a0c0f;
+  overflow: auto;
+  background: #000000;
 }
 
 .login-backdrop {
@@ -1742,8 +1757,8 @@ a {
   justify-content: space-between;
   align-items: center;
   padding: 20px 32px;
-  border-bottom: 1px solid rgba(108, 108, 255, 0.15);
-  background: rgba(8, 12, 18, 0.3);
+  /* border-bottom: 1px solid rgba(108, 108, 255, 0.15); */
+  background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   position: relative;
@@ -1942,8 +1957,8 @@ a {
 /* Footer */
 .login-footer {
   padding: 16px 32px;
-  border-top: 1px solid rgba(108, 108, 255, 0.15);
-  background: rgba(6, 10, 16, 0.5);
+  /* border-top: 1px solid rgba(108, 108, 255, 0.15); */
+  background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: flex;
