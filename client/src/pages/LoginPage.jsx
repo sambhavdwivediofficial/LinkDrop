@@ -318,7 +318,7 @@ export default function LoginPage() {
         <div className="footer-center">
           <div className="footer-creator-line">
             Made by{" "}
-            <a href="https://sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" className="footer-creator-link">
+            <a href="https://www.sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" className="footer-creator-link">
               Sambhav Dwivedi
             </a>
           </div>
