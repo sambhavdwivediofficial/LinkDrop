@@ -8,7 +8,6 @@ const { v4: uuidv4 } = require("uuid");
 const admin          = require("firebase-admin");
 const crypto         = require("crypto");
 
-// ── Firebase Admin init ───────────────────────────────────────────────────
 let serviceAccount;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -20,11 +19,9 @@ admin.initializeApp({
     : admin.credential.applicationDefault(),
 });
 
-// ── Session store ─────────────────────────────────────────────────────────
 const sessions = new Map();
 const SESSION_DURATION_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 
-// ── Global stats ──────────────────────────────────────────────────────────
 const stats = {
   totalBytesTransferred: 0,
   totalTransfers:        0,
@@ -32,11 +29,8 @@ const stats = {
   serverStartTime:       Date.now(),
 };
 
-// ── Connected socket registry (tracks which page each socket is on) ───────
-// Map<socketId, { page: 'login'|'share'|'receive', uid?: string }>
 const connectedClients = new Map();
 
-// ── Cleanup expired sessions + Firebase delete ────────────────────────────
 async function cleanupExpiredSessions() {
   const now = Date.now();
   for (const [token, data] of sessions) {
@@ -47,7 +41,6 @@ async function cleanupExpiredSessions() {
   }
 }
 
-// ── Express + Socket.IO ───────────────────────────────────────────────────
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
@@ -62,12 +55,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Health check (self-ping uses this to prevent Render sleep) ────────────
 app.get("/health", (req, res) => {
   res.json({ ok: true, uptime: Date.now() - stats.serverStartTime });
 });
 
-// ── Auth middleware ───────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
   const auth  = req.headers["authorization"] || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
@@ -82,7 +73,6 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// ── Admin secret middleware ───────────────────────────────────────────────
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "linkdrop-admin-secret-2026";
 function requireAdmin(req, res, next) {
   const secret = req.headers["x-admin-secret"];
@@ -90,11 +80,6 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// ── ADMIN APIs ────────────────────────────────────────────────────────────
-// ═════════════════════════════════════════════════════════════════════════
-
-// GET /admin/stats — server stats + realtime page counts
 app.get("/admin/stats", requireAdmin, (req, res) => {
   const pageCounts = { login: 0, share: 0, receive: 0, total: 0 };
   for (const [, info] of connectedClients) {
@@ -113,7 +98,6 @@ app.get("/admin/stats", requireAdmin, (req, res) => {
   });
 });
 
-// GET /admin/sessions — all logged-in users
 app.get("/admin/sessions", requireAdmin, (req, res) => {
   const list = [];
   for (const [token, data] of sessions) {
@@ -130,7 +114,6 @@ app.get("/admin/sessions", requireAdmin, (req, res) => {
   res.json(list);
 });
 
-// GET /admin/rooms — all active transfer rooms
 app.get("/admin/rooms", requireAdmin, (req, res) => {
   const list = [];
   for (const [roomId, room] of rooms) {
@@ -146,7 +129,6 @@ app.get("/admin/rooms", requireAdmin, (req, res) => {
   res.json(list);
 });
 
-// DELETE /admin/session/:uid — force logout user + kick their socket
 app.delete("/admin/session/:uid", requireAdmin, (req, res) => {
   const { uid } = req.params;
   let found = false;
@@ -156,7 +138,6 @@ app.delete("/admin/session/:uid", requireAdmin, (req, res) => {
       found = true;
     }
   }
-  // Kick all sockets belonging to this uid
   for (const [socketId, info] of connectedClients) {
     if (info.uid === uid) {
       io.to(socketId).emit("admin-kicked", {
@@ -169,13 +150,11 @@ app.delete("/admin/session/:uid", requireAdmin, (req, res) => {
   res.status(404).json({ error: "Session not found." });
 });
 
-// DELETE /admin/firebase/:uid — delete user from Firebase + kick socket
 app.delete("/admin/firebase/:uid", requireAdmin, async (req, res) => {
   const { uid } = req.params;
   for (const [token, data] of sessions) {
     if (data.uid === uid) sessions.delete(token);
   }
-  // Kick all sockets belonging to this uid
   for (const [socketId, info] of connectedClients) {
     if (info.uid === uid) {
       io.to(socketId).emit("admin-kicked", {
@@ -192,12 +171,10 @@ app.delete("/admin/firebase/:uid", requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /admin/room/:roomId — force kill a transfer room + notify clients
 app.delete("/admin/room/:roomId", requireAdmin, (req, res) => {
   const { roomId } = req.params;
   const room = rooms.get(roomId);
   if (!room) return res.status(404).json({ error: "Room not found." });
-  // Notify everyone in the room to reload instantly
   io.to(roomId).emit("admin-room-killed", {
     reason: "Admin has disabled this room.",
   });
@@ -205,7 +182,6 @@ app.delete("/admin/room/:roomId", requireAdmin, (req, res) => {
   res.json({ ok: true, message: "Room killed." });
 });
 
-// GET /admin/firebase/users — list all Firebase users
 app.get("/admin/firebase/users", requireAdmin, async (req, res) => {
   try {
     const result = await admin.auth().listUsers(1000);
@@ -223,11 +199,9 @@ app.get("/admin/firebase/users", requireAdmin, async (req, res) => {
   }
 });
 
-// POST /admin/firebase/disable/:uid — disable Firebase user + kick socket
 app.post("/admin/firebase/disable/:uid", requireAdmin, async (req, res) => {
   try {
     await admin.auth().updateUser(req.params.uid, { disabled: true });
-    // Kick their active sessions too
     for (const [token, data] of sessions) {
       if (data.uid === req.params.uid) sessions.delete(token);
     }
@@ -243,7 +217,6 @@ app.post("/admin/firebase/disable/:uid", requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /admin/firebase/enable/:uid — enable Firebase user
 app.post("/admin/firebase/enable/:uid", requireAdmin, async (req, res) => {
   try {
     await admin.auth().updateUser(req.params.uid, { disabled: false });
@@ -251,8 +224,6 @@ app.post("/admin/firebase/enable/:uid", requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /admin/broadcast — targeted broadcast
-// body: { message, target: 'all'|'login'|'share'|'receive' }
 app.post("/admin/broadcast", requireAdmin, (req, res) => {
   const { message, target = "all" } = req.body;
   if (target === "all") {
@@ -266,10 +237,6 @@ app.post("/admin/broadcast", requireAdmin, (req, res) => {
   }
   res.json({ ok: true });
 });
-
-// ═════════════════════════════════════════════════════════════════════════
-// ── AUTH APIs (existing) ──────────────────────────────────────────────────
-// ═════════════════════════════════════════════════════════════════════════
 
 app.post("/api/auth/verify", async (req, res) => {
   await cleanupExpiredSessions();
@@ -303,13 +270,8 @@ app.post("/api/auth/logout", requireAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// ── ROOMS + SOCKET.IO (existing) ──────────────────────────────────────────
-// ═════════════════════════════════════════════════════════════════════════
-
 const rooms = new Map();
 
-// Unique Room ID Generator
 function generateUniqueRoomId(rooms) {
   const MIN = 4;
   const MAX = 20;
@@ -344,7 +306,6 @@ function generateUniqueRoomId(rooms) {
 
 io.on("connection", (socket) => {
 
-  // Client registers which page they're on + their uid
   socket.on("register-page", ({ page, uid }) => {
     connectedClients.set(socket.id, { page: page || "unknown", uid: uid || null });
   });
@@ -415,7 +376,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// ── Start + Self-ping to prevent Render sleep ─────────────────────────────
+// ─────────────────────────── Self-ping to prevent Render sleep ─────────────────────────────
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
