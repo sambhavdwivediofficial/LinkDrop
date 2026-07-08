@@ -310,19 +310,19 @@ export default function LoginPage() {
 
       <footer className="login-footer">
         <div className="footer-left">
-          <span className="footer-brand">LINKDROP</span>
+          <span className="footer-brand">© {new Date().getFullYear()} LINKDROP</span>
           <a href="https://peerlink.in" target="_blank" rel="noopener noreferrer" className="login-powered">
             by PeerLink
           </a>
         </div>
         <div className="footer-center">
           <div className="footer-creator-line">
-            Made by{" "}
+            Built & Maintained by {" "}
             <a href="https://www.sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" className="footer-creator-link">
               Sambhav Dwivedi
             </a>
           </div>
-          <div className="footer-copyright">Copyright © {currentYear} PeerLink</div>
+          {/* <div className="footer-copyright">Copyright © {currentYear} PeerLink</div> */}
         </div>
         <div className="footer-right">
           <span className="footer-info">P2P · E2EE · ZERO KNOWLEDGE</span>
