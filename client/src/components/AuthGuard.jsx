@@ -10,6 +10,9 @@ export default function AuthGuard({ children }) {
 
   useEffect(() => {
     const check = async () => {
+      const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) { setVerified(true); return; }
+      
       const raw = localStorage.getItem(SESSION_KEY);
 
       if (!raw) return redirectToLogin();
