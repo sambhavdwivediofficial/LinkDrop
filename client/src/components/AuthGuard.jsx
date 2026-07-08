@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 
 const SESSION_KEY = "ld_session";
 
@@ -10,8 +11,10 @@ export default function AuthGuard({ children }) {
 
   useEffect(() => {
     const check = async () => {
-      const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (isMobile) { setVerified(true); return; }
+      if (Capacitor.isNativePlatform()) {
+        setVerified(true);
+        return;
+      }
       
       const raw = localStorage.getItem(SESSION_KEY);
 
