@@ -4,7 +4,6 @@ const express        = require("express");
 const http           = require("http");
 const { Server }     = require("socket.io");
 const cors           = require("cors");
-const { v4: uuidv4 } = require("uuid");
 const admin          = require("firebase-admin");
 const crypto         = require("crypto");
 
@@ -20,7 +19,7 @@ admin.initializeApp({
 });
 
 const sessions = new Map();
-const SESSION_DURATION_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+const SESSION_DURATION_MS = 2 * 24 * 60 * 60 * 1000;
 
 const stats = {
   totalBytesTransferred: 0,
@@ -30,6 +29,12 @@ const stats = {
 };
 
 const connectedClients = new Map();
+
+const rooms = new Map();
+
+const ROOM_EXPIRE_MS      = 60 * 60 * 1000;
+const ROOM_MAX_AGE_MS     = 2  * 60 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 5  * 60 * 1000;
 
 async function cleanupExpiredSessions() {
   const now = Date.now();
@@ -54,6 +59,30 @@ app.use((req, res, next) => {
   res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
   next();
 });
+
+setInterval(async () => {
+  const now = Date.now();
+
+  for (const [token, data] of sessions) {
+    if (data.expiresAt <= now) {
+      sessions.delete(token);
+      try { await admin.auth().deleteUser(data.uid); } catch {}
+    }
+  }
+
+  for (const [roomId, room] of rooms) {
+    if (!room.completed && now - room.createdAt > ROOM_EXPIRE_MS) {
+      io.to(roomId).emit("room-expired");
+      rooms.delete(roomId);
+      continue;
+    }
+    if (now - room.createdAt > ROOM_MAX_AGE_MS) {
+      io.to(roomId).emit("room-expired");
+      rooms.delete(roomId);
+    }
+  }
+
+}, CLEANUP_INTERVAL_MS);
 
 app.get("/health", (req, res) => {
   res.json({ ok: true, uptime: Date.now() - stats.serverStartTime });
@@ -123,6 +152,7 @@ app.get("/admin/rooms", requireAdmin, (req, res) => {
       peers:     [...room.peers],
       meta:      room.meta,
       createdAt: room.createdAt,
+      completed: room.completed,
       hostEmail: room.hostEmail || null,
     });
   }
@@ -133,10 +163,7 @@ app.delete("/admin/session/:uid", requireAdmin, (req, res) => {
   const { uid } = req.params;
   let found = false;
   for (const [token, data] of sessions) {
-    if (data.uid === uid) {
-      sessions.delete(token);
-      found = true;
-    }
+    if (data.uid === uid) { sessions.delete(token); found = true; }
   }
   for (const [socketId, info] of connectedClients) {
     if (info.uid === uid) {
@@ -175,9 +202,7 @@ app.delete("/admin/room/:roomId", requireAdmin, (req, res) => {
   const { roomId } = req.params;
   const room = rooms.get(roomId);
   if (!room) return res.status(404).json({ error: "Room not found." });
-  io.to(roomId).emit("admin-room-killed", {
-    reason: "Admin has disabled this room.",
-  });
+  io.to(roomId).emit("admin-room-killed", { reason: "Admin has disabled this room." });
   rooms.delete(roomId);
   res.json({ ok: true, message: "Room killed." });
 });
@@ -270,37 +295,25 @@ app.post("/api/auth/logout", requireAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
-const rooms = new Map();
-
 function generateUniqueRoomId(rooms) {
   const MIN = 4;
   const MAX = 20;
   const MAX_ATTEMPTS_PER_LENGTH = 30;
-
-  let triedLengths = new Set();
+  const triedLengths = new Set();
 
   while (triedLengths.size < (MAX - MIN + 1)) {
-
-    let availableLengths = [];
+    const availableLengths = [];
     for (let i = MIN; i <= MAX; i++) {
       if (!triedLengths.has(i)) availableLengths.push(i);
     }
-
     const length = availableLengths[Math.floor(Math.random() * availableLengths.length)];
     triedLengths.add(length);
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_LENGTH; attempt++) {
-
-      const id = crypto.randomBytes(length)
-        .toString("hex")
-        .slice(0, length);
-
-      if (!rooms.has(id)) {
-        return id;
-      }
+      const id = crypto.randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
+      if (!rooms.has(id)) return id;
     }
   }
-
   throw new Error("Unable to generate unique room ID");
 }
 
@@ -321,18 +334,47 @@ io.on("connection", (socket) => {
       if (socket.handshake && data.uid) hostEmail = data.email;
     }
     rooms.set(roomId, {
-      passwordHash, hostId: socket.id, meta,
-      peers: new Set(), createdAt: Date.now(), hostEmail,
+      passwordHash,
+      hostId:    socket.id,
+      meta,
+      peers:     new Set(),
+      createdAt: Date.now(),
+      hostEmail,
+      completed: false,
     });
     socket.join(roomId);
     socket.roomId = roomId;
     cb({ roomId });
   });
 
+  socket.on("rejoin-room", ({ roomId, passwordHash }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    if (room.passwordHash !== passwordHash) return;
+
+    const oldHostId = room.hostId;
+    room.hostId = socket.id;
+    socket.join(roomId);
+    socket.roomId = roomId;
+
+    for (const peerId of room.peers) {
+      io.to(peerId).emit("host-rejoined", { newHostId: socket.id });
+    }
+  });
+
   socket.on("join-room", ({ roomId, passwordHash }, cb) => {
     const room = rooms.get(roomId);
-    if (!room)                              return cb({ error: "Room not found or expired." });
+
+    if (!room) return cb({ error: "Room expired or not found." });
+
+    if (!room.completed && Date.now() - room.createdAt > ROOM_EXPIRE_MS) {
+      rooms.delete(roomId);
+      return cb({ error: "Room has expired." });
+    }
+
     if (room.passwordHash !== passwordHash) return cb({ error: "Incorrect password." });
+
     room.peers.add(socket.id);
     socket.join(roomId);
     socket.roomId = roomId;
@@ -351,14 +393,15 @@ io.on("connection", (socket) => {
 
   socket.on("receiver-downloaded", ({ roomId }) => {
     const room = rooms.get(roomId);
-    if (room) {
-      if (room.meta && room.meta.totalSize) {
-        stats.totalBytesTransferred += room.meta.totalSize;
-      }
-      stats.totalTransfers++;
-      io.to(room.hostId).emit("receiver-downloaded");
-      rooms.delete(roomId);
-    }
+    if (!room) return;
+
+    if (room.meta?.totalSize) stats.totalBytesTransferred += room.meta.totalSize;
+    stats.totalTransfers++;
+
+    io.to(room.hostId).emit("receiver-downloaded");
+
+    room.completed = true;
+    rooms.delete(roomId);
   });
 
   socket.on("disconnect", () => {
@@ -367,9 +410,10 @@ io.on("connection", (socket) => {
     if (!roomId) return;
     const room = rooms.get(roomId);
     if (!room) return;
+
     if (room.hostId === socket.id) {
       io.to(roomId).emit("host-left");
-      rooms.delete(roomId);
+      room.hostId = null;
     } else {
       room.peers.delete(socket.id);
     }

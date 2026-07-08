@@ -18,30 +18,26 @@ const STEPS = {
   ERROR:      "error"
 };
 
-// ── Admin Toast (Fixed Timer) ────────────────────────────────────────────────────
 function AdminToast({ message, onClose }) {
   const timerRef = useRef(null);
 
   useEffect(() => {
-    // Clear any existing timer
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
 
-    // Set new 30-second timer
     timerRef.current = setTimeout(() => {
       onClose();
-    }, 50000); // exactly 50 seconds
+    }, 50000);
 
-    // Cleanup on unmount or before re-run
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [message]); // Only depend on message, not onClose
+  }, [message]);
 
   return (
     <div
@@ -61,14 +57,12 @@ function AdminToast({ message, onClose }) {
         background: "rgba(0,0,0,0.95)",
         backdropFilter: "blur(8px)",
         border: "1px solid rgba(108,108,255,0.4)",
-        // boxShadow: "0 0 20px rgba(108,108,255,0.15)",
         padding: "0px",
         color: "#eee",
         fontSize: 14,
         wordBreak: "break-word",
       }}
     >
-      {/* Top row: ADMIN MESSAGE + close button */}
       <div
         style={{
           display: "flex",
@@ -115,7 +109,6 @@ function AdminToast({ message, onClose }) {
         </button>
       </div>
 
-      {/* Message box with thin border */}
       <div
         style={{
           margin: "4px 14px 12px 14px",
@@ -154,7 +147,6 @@ export default function ReceivePage() {
   const socketRef   = useRef(null);
   const receiverRef = useRef(null);
 
-  // ── Register page + persistent admin event listener ───────────────────
   useEffect(() => {
     const session = (() => {
       try { return JSON.parse(localStorage.getItem("ld_session") || "{}"); } catch { return {}; }
@@ -305,17 +297,14 @@ export default function ReceivePage() {
             }
           });
 
-          // Admin killed this room — instant reload
           socket.on("admin-room-killed", () => {
             window.location.reload();
           });
 
-          // Admin broadcast
           socket.on("admin-broadcast", ({ message }) => {
             setAdminToast(message);
           });
 
-          // Admin kicked this user
           socket.on("admin-kicked", ({ reason }) => {
             localStorage.removeItem("ld_session");
             setAdminToast(`⚠ ${reason}`);
@@ -362,12 +351,10 @@ export default function ReceivePage() {
   return (
     <div className="rcv-container">
 
-      {/* Admin broadcast toast */}
       {adminToast && (
         <AdminToast message={adminToast} onClose={() => setAdminToast(null)} />
       )}
 
-      {/* ── Unlocking overlay ── */}
       {unlocking && (
         <div className="shr-creating-overlay">
           <div className="shr-creating-box">
@@ -562,13 +549,20 @@ export default function ReceivePage() {
               {/* <a href="/"><button className="rcv-btn-secondary rcv-btn-large">GO BACK</button></a> */}
             </div>
           )}
+          <style>{`
+                @media (max-width: 640px) {
+                  .rcv-footer span:last-child {
+                    display: none;
+                  }
+                }
+              `}</style>
 
         </div>
       </main>
 
       <footer className="rcv-footer">
         <span>LINKDROP © {new Date().getFullYear()}</span>
-        <span>Made by <a href="https://www.sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" style={{ color: "#fff", textDecoration: "none", fontSize: "13px", transition: "0.2s" }} onMouseEnter={(e) => e.target.style.textDecoration = "underline"} onMouseLeave={(e) => e.target.style.textDecoration = "none"}>Sambhav Dwivedi</a></span>
+        <span>Built & Maintained by <a href="https://www.sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" style={{ color: "#fff", textDecoration: "none", fontSize: "13px", transition: "0.2s" }} onMouseEnter={(e) => e.target.style.textDecoration = "underline"} onMouseLeave={(e) => e.target.style.textDecoration = "none"}>Sambhav Dwivedi</a></span>
         <span>P2P · ZERO SERVER STORAGE</span>
       </footer>
     </div>

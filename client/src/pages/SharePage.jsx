@@ -15,118 +15,63 @@ const STEPS = {
 };
 const MAX_FILES = 5;
 
-// ── Admin Toast (Fixed Timer) ────────────────────────────────────────────────────
+function QRCode({ value, size = 160 }) {
+  if (!value) return null;
+  const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}&bgcolor=111111&color=ffffff&margin=6&format=png`;
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: 6,
+    }}>
+      <img
+        src={url}
+        alt="QR Code"
+        width={size}
+        height={size}
+        style={{
+          borderRadius: 0,
+          display: "block",
+        }}
+        onError={(e) => { e.target.style.display = "none"; }}
+      />
+    </div>
+  );
+}
+
 function AdminToast({ message, onClose }) {
   const timerRef = useRef(null);
 
   useEffect(() => {
-    // Clear any existing timer
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-
-    // Set new 30-second timer
-    timerRef.current = setTimeout(() => {
-      onClose();
-    }, 50000); // exactly 50 seconds
-
-    // Cleanup on unmount or before re-run
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [message]); // Only depend on message, not onClose
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    timerRef.current = setTimeout(() => { onClose(); }, 50000);
+    return () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
+  }, [message]);
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 60,
-        right: 10,
-        left: "auto",
-        transform: "none",
-        zIndex: 99999,
-        width: "fit-content",
-        maxWidth: "90%",
-        minWidth: 280,
-        display: "flex",
-        flexDirection: "column",
-        borderRadius: 6,
-        background: "rgba(0,0,0,0.95)",
-        backdropFilter: "blur(8px)",
-        border: "1px solid rgba(108,108,255,0.4)",
-        // boxShadow: "0 0 20px rgba(108,108,255,0.15)",
-        padding: "0px",
-        color: "#eee",
-        fontSize: 14,
-        wordBreak: "break-word",
-      }}
-    >
-      {/* Top row: ADMIN MESSAGE + close button */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 14px 4px 14px",
-        }}
-      >
-        <span
-          style={{
-            fontSize: 11,
-            letterSpacing: 2,
-            color: "#6c6cff",
-            fontWeight: 500,
-          }}
-        >
-          ADMIN MESSAGE
-        </span>
-        <button
-          onClick={onClose}
-          style={{
-            background: "rgba(220, 40, 40, 0.9)",
-            border: "none",
-            width: 20,
-            height: 20,
-            borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            color: "#fff",
-            fontSize: 10,
-            fontWeight: "bold",
-            flexShrink: 0,
-            padding: 0,
-            lineHeight: 1,
-            boxShadow: "0 0 6px rgba(220,40,40,0.5)",
-            transition: "background 0.2s",
-          }}
-          onMouseOver={(e) => (e.currentTarget.style.background = "rgba(220,40,40,0.9)")}
-          onMouseOut={(e) => (e.currentTarget.style.background = "rgba(224, 11, 11, 0.43)")}
-        >
-          ✕
-        </button>
+    <div style={{
+      position: "fixed", top: 60, right: 10, left: "auto", transform: "none",
+      zIndex: 99999, width: "fit-content", maxWidth: "90%", minWidth: 280,
+      display: "flex", flexDirection: "column", borderRadius: 6,
+      background: "rgba(0,0,0,0.95)", backdropFilter: "blur(8px)",
+      border: "1px solid rgba(108,108,255,0.4)", padding: "0px",
+      color: "#eee", fontSize: 14, wordBreak: "break-word",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px 4px 14px" }}>
+        <span style={{ fontSize: 11, letterSpacing: 2, color: "#6c6cff", fontWeight: 500 }}>ADMIN MESSAGE</span>
+        <button onClick={onClose} style={{
+          background: "rgba(220,40,40,0.9)", border: "none", width: 20, height: 20,
+          borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: "bold",
+          flexShrink: 0, padding: 0, lineHeight: 1,
+        }}>✕</button>
       </div>
-
-      {/* Message box with thin border */}
-      <div
-        style={{
-          margin: "4px 14px 12px 14px",
-          padding: "12px 14px",
-          border: "1px solid rgba(108,108,255,0.25)",
-          borderRadius: 4,
-          background: "rgba(0,0,0,0.2)",
-          color: "#ffffff",
-          fontSize: 14,
-          lineHeight: 1.5,
-        }}
-      >
-        {message}
-      </div>
+      <div style={{
+        margin: "4px 14px 12px 14px", padding: "12px 14px",
+        border: "1px solid rgba(108,108,255,0.25)", borderRadius: 4,
+        background: "rgba(0,0,0,0.2)", color: "#ffffff", fontSize: 14, lineHeight: 1.5,
+      }}>{message}</div>
     </div>
   );
 }
@@ -151,13 +96,12 @@ export default function SharePage() {
   const [adminToast, setAdminToast]   = useState(null);
   const [roomIdRef_]              = useState({ current: "" });
 
-  const socketRef  = useRef(null);
-  const senderRef  = useRef(null);
-  const fileRef    = useRef(null);
-  const folderRef  = useRef(null);
+  const socketRef   = useRef(null);
+  const senderRef   = useRef(null);
+  const fileRef     = useRef(null);
+  const folderRef   = useRef(null);
   const roomIdSaved = useRef("");
 
-  // ── Register page + listen for admin events via a persistent socket ────
   useEffect(() => {
     const session = (() => {
       try { return JSON.parse(localStorage.getItem("ld_session") || "{}"); } catch { return {}; }
@@ -166,10 +110,8 @@ export default function SharePage() {
     adminSocket.on("connect", () => {
       adminSocket.emit("register-page", { page: "share", uid: session.uid || null });
     });
-    adminSocket.on("admin-broadcast", ({ message }) => {
-      setAdminToast(message);
-    });
-    adminSocket.on("admin-kicked", ({ reason, action }) => {
+    adminSocket.on("admin-broadcast", ({ message }) => { setAdminToast(message); });
+    adminSocket.on("admin-kicked", ({ reason }) => {
       localStorage.removeItem("ld_session");
       setAdminToast(`⚠ ${reason}`);
       setTimeout(() => { window.location.href = "/login"; }, 2000);
@@ -249,6 +191,13 @@ export default function SharePage() {
         });
       });
 
+      socket.on("reconnect", () => {
+        if (roomIdSaved.current) {
+          socket.emit("register-page", { page: "share", uid: session.uid || null });
+          socket.emit("rejoin-room", { roomId: roomIdSaved.current, passwordHash: hash });
+        }
+      });
+
       socket.on("peer-joined", ({ peerId }) => {
         setStep(STEPS.SENDING);
         setStat("Receiver connected — sending...");
@@ -267,17 +216,10 @@ export default function SharePage() {
         setStep(STEPS.DONE);
       });
 
-      // Admin killed this room — instant reload, no warning
-      socket.on("admin-room-killed", ({ reason }) => {
-        window.location.reload();
-      });
+      socket.on("admin-room-killed", () => { window.location.reload(); });
 
-      // Admin broadcast
-      socket.on("admin-broadcast", ({ message }) => {
-        setAdminToast(message);
-      });
+      socket.on("admin-broadcast", ({ message }) => { setAdminToast(message); });
 
-      // Admin kicked this user
       socket.on("admin-kicked", ({ reason }) => {
         localStorage.removeItem("ld_session");
         setAdminToast(`⚠ ${reason}`);
@@ -324,6 +266,7 @@ export default function SharePage() {
     setStep(STEPS.COMPOSE); setFiles([]); setText(""); setPass("");
     setError(""); setLink(""); setCopied(false); setProgMap({});
     setOvPct(0); setStat(""); setRSaved(false); setRDl(false); setCreating(false);
+    roomIdSaved.current = "";
     if (fileRef.current)   fileRef.current.value   = "";
     if (folderRef.current) folderRef.current.value = "";
   };
@@ -331,12 +274,10 @@ export default function SharePage() {
   return (
     <div className="shr-container">
 
-      {/* Admin broadcast toast */}
       {adminToast && (
         <AdminToast message={adminToast} onClose={() => setAdminToast(null)} />
       )}
 
-      {/* ── Creating overlay ── */}
       {creating && (
         <div className="shr-creating-overlay">
           <div className="shr-creating-box">
@@ -361,7 +302,6 @@ export default function SharePage() {
       <main className="shr-main">
         <div className="shr-wrap">
 
-          {/* COMPOSE */}
           {step === STEPS.COMPOSE && (
             <>
               <div className="shr-compose-header shr-fade-up">
@@ -411,21 +351,6 @@ export default function SharePage() {
                       onChange={onFileInput}
                     />
                   </div>
-
-                  {/* <button
-                    className="shr-btn-folder"
-                    onClick={() => folderRef.current?.click()}
-                  >
-                    + Select Folder
-                    <input
-                      ref={folderRef}
-                      type="file"
-                      webkitdirectory="true"
-                      multiple
-                      style={{ display: "none" }}
-                      onChange={onFolderInput}
-                    />
-                  </button> */}
 
                   {files.length > 0 && (
                     <div className="shr-file-list">
@@ -507,7 +432,6 @@ export default function SharePage() {
             </>
           )}
 
-          {/* WAITING */}
           {step === STEPS.WAITING && (
             <div className="shr-waiting shr-fade-up">
               <div className="shr-waiting-header">
@@ -516,36 +440,79 @@ export default function SharePage() {
               </div>
               <h2 className="shr-heading shr-heading-waiting">LINK<br />READY</h2>
 
-              <div className="shr-card">
-                <div className="shr-card-label">Shareable Link</div>
-                <div className="shr-link-row">
-                  <div className="shr-link-box">{shareLink}</div>
-                  <button
-                    className={`shr-copy-btn ${copied ? "shr-copied" : ""}`}
-                    onClick={copyLink}
-                  >
-                    {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
-                    {copied ? "COPIED" : "COPY"}
-                  </button>
+              <div style={{
+                display: "flex",
+                flexDirection: "row",
+                gap: 16,
+                alignItems: "stretch",
+                marginBottom: 16,
+              }}
+              className="shr-link-qr-row"
+              >
+                <div style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}>
+                  <div className="shr-card" style={{ marginBottom: 0 }}>
+                    <div className="shr-card-label">Shareable Link</div>
+                    <div className="shr-link-row">
+                      <div className="shr-link-box">{shareLink}</div>
+                      <button
+                        className={`shr-copy-btn ${copied ? "shr-copied" : ""}`}
+                        onClick={copyLink}
+                      >
+                        {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
+                        {copied ? "COPIED" : "COPY"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="shr-warn" style={{ flex: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <div className="shr-warn-title">⚠ DO NOT CLOSE THIS PAGE</div>
+                    <div className="shr-warn-text">
+                      Do not close or reload this page until the receiver has received and downloaded the file.
+                      The file only exists in your browser.
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  background: "rgba(20,20,20,0.7)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 8,
+                  padding: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}>
+                  <QRCode value={shareLink} size={220} />
                 </div>
               </div>
 
-              <div className="shr-warn">
-                <div className="shr-warn-title">⚠ DO NOT CLOSE THIS PAGE</div>
-                <div className="shr-warn-text">
-                  Do not close or reload this page until the receiver has received and downloaded the file.
-                  The file only exists in your browser.
-                </div>
-              </div>
+              <style>{`
+                @media (max-width: 640px) {
+                  .shr-link-qr-row {
+                    flex-direction: column !important;
+                    align-items: stretch !important;
+                  }
+                  .shr-link-qr-row > div:last-child {
+                    align-self: center;
+                  }
+                  .shr-footer span:last-child {
+                    display: none;
+                  }
+                }
+              `}</style>
 
               <button className="shr-btn-secondary shr-btn-block" onClick={reset}>
                 Cancel
               </button>
             </div>
           )}
-
-          {/* SENDING */}
-          {step === STEPS.SENDING && (
+{step === STEPS.SENDING && (
             <div className="shr-sending shr-fade-up">
               <div className="shr-sending-header">
                 <span className="shr-live" />
@@ -590,7 +557,6 @@ export default function SharePage() {
             </div>
           )}
 
-          {/* SENT */}
           {step === STEPS.SENT && (
             <div className="shr-sent shr-fade-up">
               <div className="shr-sent-header">
@@ -638,7 +604,6 @@ export default function SharePage() {
             </div>
           )}
 
-          {/* DONE */}
           {step === STEPS.DONE && (
             <div className="shr-done shr-fade-up">
               <div className="shr-done-icon">
@@ -657,7 +622,7 @@ export default function SharePage() {
 
       <footer className="shr-footer">
         <span>LINKDROP © {new Date().getFullYear()}</span>
-        <span>Made by <a href="https://www.sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" style={{ color: "#fff", textDecoration: "none", fontSize: "13px", transition: "0.2s" }} onMouseEnter={(e) => e.target.style.textDecoration = "underline"} onMouseLeave={(e) => e.target.style.textDecoration = "none"}>Sambhav Dwivedi</a></span>
+        <span>Built & Maintained by <a href="https://www.sambhavdwivedi.in" target="_blank" rel="noopener noreferrer" style={{ color: "#fff", textDecoration: "none", fontSize: "13px", transition: "0.2s" }} onMouseEnter={(e) => e.target.style.textDecoration = "underline"} onMouseLeave={(e) => e.target.style.textDecoration = "none"}>Sambhav Dwivedi</a></span>
         <span>P2P · ZERO SERVER STORAGE</span>
       </footer>
     </div>
