@@ -1,4 +1,3 @@
-// src/components/AuthGuard.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -13,7 +12,6 @@ export default function AuthGuard({ children }) {
     const check = async () => {
       const raw = localStorage.getItem(SESSION_KEY);
 
-      // No session at all → go to login immediately
       if (!raw) return redirectToLogin();
 
       let session;
@@ -24,23 +22,19 @@ export default function AuthGuard({ children }) {
         return redirectToLogin();
       }
 
-      // Client-side expiry check — instant, no network needed
       if (!session.expiry || Date.now() >= session.expiry) {
         localStorage.removeItem(SESSION_KEY);
         return redirectToLogin();
       }
 
-      // ✅ Client session valid — show page immediately (optimistic)
       setVerified(true);
 
-      // Background server verify — won't block UI
-      // If server rejects, THEN kick to login
       try {
         const res = await fetch(
           `${import.meta.env.VITE_SIGNAL_URL}/api/auth/session`,
           {
             headers: { Authorization: `Bearer ${session.token}` },
-            signal: AbortSignal.timeout(10000), // 10s max wait
+            signal: AbortSignal.timeout(10000),
           }
         );
         if (!res.ok) {
@@ -48,8 +42,6 @@ export default function AuthGuard({ children }) {
           redirectToLogin();
         }
       } catch {
-        // Network error or server sleeping — allow access
-        // Client session is still valid, don't kick user
       }
     };
 

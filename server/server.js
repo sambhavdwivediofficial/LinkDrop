@@ -420,7 +420,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// ─────────────────────────── Self-ping to prevent Render sleep ─────────────────────────────
+// ──────────────────────── Self-ping to prevent Render sleep ──────────────────────────
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;

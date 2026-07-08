@@ -616,7 +616,13 @@ export default function SharePage() {
               </button>
             </div>
           )}
-
+          <style>{`
+                @media (max-width: 640px) {
+                  .shr-footer span:last-child {
+                    display: none;
+                  }
+                }
+              `}</style>
         </div>
       </main>
 
