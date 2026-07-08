@@ -2,7 +2,7 @@
 import { io } from "socket.io-client";
 
 const SIGNAL_URL = import.meta.env.VITE_SIGNAL_URL || "";
-const CHUNK      = 256 * 1024; // 256KB chunks
+const CHUNK      = 256 * 1024;
 const ICE = {
   iceServers: [
     {
