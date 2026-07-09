@@ -29,8 +29,7 @@ const stats = {
 };
 
 const connectedClients = new Map();
-
-const rooms = new Map();
+const rooms            = new Map();
 
 const ROOM_EXPIRE_MS      = 60 * 60 * 1000;
 const ROOM_MAX_AGE_MS     = 2  * 60 * 60 * 1000;
@@ -43,6 +42,32 @@ async function cleanupExpiredSessions() {
       sessions.delete(token);
       try { await admin.auth().deleteUser(data.uid); } catch {}
     }
+  }
+}
+
+async function getGeoInfo(ip) {
+  try {
+    if (!ip || ip === "::1" || ip === "127.0.0.1" || ip.startsWith("192.168") || ip.startsWith("10.")) {
+      return { country: "Local", countryCode: "LO", region: "Local", city: "Local", isp: "Local", continent: "Local" };
+    }
+    const cleanIp = ip.replace("::ffff:", "");
+    const res = await fetch(`http://ip-api.com/json/${cleanIp}?fields=status,country,countryCode,regionName,city,isp,org,continent,query`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status !== "success") return null;
+    return {
+      country:     data.country     || "Unknown",
+      countryCode: data.countryCode || "??",
+      region:      data.regionName  || "Unknown",
+      city:        data.city        || "Unknown",
+      isp:         data.isp         || data.org || "Unknown",
+      continent:   data.continent   || "Unknown",
+      ip:          data.query       || cleanIp,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -62,14 +87,12 @@ app.use((req, res, next) => {
 
 setInterval(async () => {
   const now = Date.now();
-
   for (const [token, data] of sessions) {
     if (data.expiresAt <= now) {
       sessions.delete(token);
       try { await admin.auth().deleteUser(data.uid); } catch {}
     }
   }
-
   for (const [roomId, room] of rooms) {
     if (!room.completed && now - room.createdAt > ROOM_EXPIRE_MS) {
       io.to(roomId).emit("room-expired");
@@ -81,7 +104,6 @@ setInterval(async () => {
       rooms.delete(roomId);
     }
   }
-
 }, CLEANUP_INTERVAL_MS);
 
 app.get("/health", (req, res) => {
@@ -110,11 +132,33 @@ function requireAdmin(req, res, next) {
 }
 
 app.get("/admin/stats", requireAdmin, (req, res) => {
-  const pageCounts = { login: 0, share: 0, receive: 0, total: 0 };
+  const pageCounts   = { login: 0, share: 0, receive: 0, total: 0 };
+  const deviceCounts = { "web-desktop": 0, "web-mobile": 0, "web-tablet": 0, "android-app": 0, unknown: 0 };
+  const osCounts     = {};
+  const browserCounts= {};
+  const countryCounts= {};
+  const continentCounts = {};
+
   for (const [, info] of connectedClients) {
     if (info.page && pageCounts[info.page] !== undefined) pageCounts[info.page]++;
     pageCounts.total++;
+
+    const plat = info.device?.platform || "unknown";
+    deviceCounts[plat] = (deviceCounts[plat] || 0) + 1;
+
+    const os = info.device?.os || "Unknown";
+    osCounts[os] = (osCounts[os] || 0) + 1;
+
+    const br = info.device?.browser || "Unknown";
+    browserCounts[br] = (browserCounts[br] || 0) + 1;
+
+    const country = info.geo?.country || "Unknown";
+    countryCounts[country] = (countryCounts[country] || 0) + 1;
+
+    const continent = info.geo?.continent || "Unknown";
+    continentCounts[continent] = (continentCounts[continent] || 0) + 1;
   }
+
   res.json({
     totalBytesTransferred: stats.totalBytesTransferred,
     totalTransfers:        stats.totalTransfers,
@@ -124,7 +168,28 @@ app.get("/admin/stats", requireAdmin, (req, res) => {
     uptime:                Date.now() - stats.serverStartTime,
     serverStartTime:       stats.serverStartTime,
     connectedClients:      pageCounts,
+    deviceCounts,
+    osCounts,
+    browserCounts,
+    countryCounts,
+    continentCounts,
   });
+});
+
+app.get("/admin/clients", requireAdmin, (req, res) => {
+  const list = [];
+  for (const [socketId, info] of connectedClients) {
+    list.push({
+      socketId,
+      page:      info.page,
+      uid:       info.uid,
+      email:     info.email,
+      device:    info.device,
+      geo:       info.geo,
+      connectedAt: info.connectedAt,
+    });
+  }
+  res.json(list);
 });
 
 app.get("/admin/sessions", requireAdmin, (req, res) => {
@@ -167,13 +232,10 @@ app.delete("/admin/session/:uid", requireAdmin, (req, res) => {
   }
   for (const [socketId, info] of connectedClients) {
     if (info.uid === uid) {
-      io.to(socketId).emit("admin-kicked", {
-        reason: "You have been signed out by Admin.",
-        action: "logout",
-      });
+      io.to(socketId).emit("admin-kicked", { reason: "You have been signed out by Admin.", action: "logout" });
     }
   }
-  if (found) return res.json({ ok: true, message: "User force-logged out." });
+  if (found) return res.json({ ok: true });
   res.status(404).json({ error: "Session not found." });
 });
 
@@ -184,18 +246,13 @@ app.delete("/admin/firebase/:uid", requireAdmin, async (req, res) => {
   }
   for (const [socketId, info] of connectedClients) {
     if (info.uid === uid) {
-      io.to(socketId).emit("admin-kicked", {
-        reason: "Your account has been deleted by Admin.",
-        action: "logout",
-      });
+      io.to(socketId).emit("admin-kicked", { reason: "Your account has been deleted by Admin.", action: "logout" });
     }
   }
   try {
     await admin.auth().deleteUser(uid);
-    res.json({ ok: true, message: "User deleted from Firebase." });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete("/admin/room/:roomId", requireAdmin, (req, res) => {
@@ -204,7 +261,7 @@ app.delete("/admin/room/:roomId", requireAdmin, (req, res) => {
   if (!room) return res.status(404).json({ error: "Room not found." });
   io.to(roomId).emit("admin-room-killed", { reason: "Admin has disabled this room." });
   rooms.delete(roomId);
-  res.json({ ok: true, message: "Room killed." });
+  res.json({ ok: true });
 });
 
 app.get("/admin/firebase/users", requireAdmin, async (req, res) => {
@@ -219,9 +276,7 @@ app.get("/admin/firebase/users", requireAdmin, async (req, res) => {
       disabled:     u.disabled,
     }));
     res.json(users);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post("/admin/firebase/disable/:uid", requireAdmin, async (req, res) => {
@@ -232,10 +287,7 @@ app.post("/admin/firebase/disable/:uid", requireAdmin, async (req, res) => {
     }
     for (const [socketId, info] of connectedClients) {
       if (info.uid === req.params.uid) {
-        io.to(socketId).emit("admin-kicked", {
-          reason: "Your account has been disabled by Admin.",
-          action: "logout",
-        });
+        io.to(socketId).emit("admin-kicked", { reason: "Your account has been disabled by Admin.", action: "logout" });
       }
     }
     res.json({ ok: true });
@@ -296,20 +348,14 @@ app.post("/api/auth/logout", requireAuth, (req, res) => {
 });
 
 function generateUniqueRoomId(rooms) {
-  const MIN = 4;
-  const MAX = 20;
-  const MAX_ATTEMPTS_PER_LENGTH = 30;
+  const MIN = 4, MAX = 20, MAX_ATTEMPTS_PER_LENGTH = 30;
   const triedLengths = new Set();
-
   while (triedLengths.size < (MAX - MIN + 1)) {
-    const availableLengths = [];
-    for (let i = MIN; i <= MAX; i++) {
-      if (!triedLengths.has(i)) availableLengths.push(i);
-    }
-    const length = availableLengths[Math.floor(Math.random() * availableLengths.length)];
+    const available = [];
+    for (let i = MIN; i <= MAX; i++) { if (!triedLengths.has(i)) available.push(i); }
+    const length = available[Math.floor(Math.random() * available.length)];
     triedLengths.add(length);
-
-    for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_LENGTH; attempt++) {
+    for (let a = 0; a < MAX_ATTEMPTS_PER_LENGTH; a++) {
       const id = crypto.randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
       if (!rooms.has(id)) return id;
     }
@@ -318,9 +364,34 @@ function generateUniqueRoomId(rooms) {
 }
 
 io.on("connection", (socket) => {
+  const ip = (socket.handshake.headers["x-forwarded-for"] || socket.handshake.address || "").split(",")[0].trim();
 
-  socket.on("register-page", ({ page, uid }) => {
-    connectedClients.set(socket.id, { page: page || "unknown", uid: uid || null });
+  connectedClients.set(socket.id, {
+    page:        "unknown",
+    uid:         null,
+    email:       null,
+    device:      null,
+    geo:         null,
+    connectedAt: Date.now(),
+    ip,
+  });
+
+  getGeoInfo(ip).then(geo => {
+    const client = connectedClients.get(socket.id);
+    if (client) {
+      client.geo = geo;
+      connectedClients.set(socket.id, client);
+      socket.emit("geo-ready");
+    }
+  });
+
+  socket.on("register-page", ({ page, uid, email, device }) => {
+    const client = connectedClients.get(socket.id) || {};
+    client.page   = page   || "unknown";
+    client.uid    = uid    || null;
+    client.email  = email  || null;
+    client.device = device || null;
+    connectedClients.set(socket.id, client);
   });
 
   socket.on("check-room", ({ roomId }, cb) => {
@@ -350,14 +421,10 @@ io.on("connection", (socket) => {
   socket.on("rejoin-room", ({ roomId, passwordHash }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-
     if (room.passwordHash !== passwordHash) return;
-
-    const oldHostId = room.hostId;
     room.hostId = socket.id;
     socket.join(roomId);
     socket.roomId = roomId;
-
     for (const peerId of room.peers) {
       io.to(peerId).emit("host-rejoined", { newHostId: socket.id });
     }
@@ -365,16 +432,12 @@ io.on("connection", (socket) => {
 
   socket.on("join-room", ({ roomId, passwordHash }, cb) => {
     const room = rooms.get(roomId);
-
     if (!room) return cb({ error: "Room expired or not found." });
-
     if (!room.completed && Date.now() - room.createdAt > ROOM_EXPIRE_MS) {
       rooms.delete(roomId);
       return cb({ error: "Room has expired." });
     }
-
     if (room.passwordHash !== passwordHash) return cb({ error: "Incorrect password." });
-
     room.peers.add(socket.id);
     socket.join(roomId);
     socket.roomId = roomId;
@@ -394,12 +457,9 @@ io.on("connection", (socket) => {
   socket.on("receiver-downloaded", ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-
     if (room.meta?.totalSize) stats.totalBytesTransferred += room.meta.totalSize;
     stats.totalTransfers++;
-
     io.to(room.hostId).emit("receiver-downloaded");
-
     room.completed = true;
     rooms.delete(roomId);
   });
@@ -410,7 +470,6 @@ io.on("connection", (socket) => {
     if (!roomId) return;
     const room = rooms.get(roomId);
     if (!room) return;
-
     if (room.hostId === socket.id) {
       io.to(roomId).emit("host-left");
       room.hostId = null;

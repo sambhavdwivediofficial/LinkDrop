@@ -1,259 +1,227 @@
-//peer.js
 import { io } from "socket.io-client";
 
-const SIGNAL_URL = import.meta.env.VITE_SIGNAL_URL || "";
-const CHUNK      = 256 * 1024;
-const ICE = {
-  iceServers: [
-    {
-      urls: [
-        "stun:stun.l.google.com:19302",
-        "stun:stun1.l.google.com:19302"
-      ]
-    },
-
-    {
-      urls: [
-        "turn:openrelay.metered.ca:80",
-        "turn:openrelay.metered.ca:80?transport=tcp",
-        "turn:openrelay.metered.ca:443",
-        "turns:openrelay.metered.ca:443?transport=tcp"
-      ],
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    }
-  ],
-
-  iceCandidatePoolSize: 10
-};
+const SIGNAL_URL = import.meta.env.VITE_SIGNAL_URL || "http://localhost:5000";
 
 export function createSocket() {
   return io(SIGNAL_URL, { transports: ["websocket", "polling"] });
 }
 
-export async function sha256(str) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+export function getDeviceInfo() {
+  const ua = navigator.userAgent || "";
+  let platform = "web-desktop";
+  let deviceType = "Desktop";
+  let os = "Unknown";
+  let browser = "Unknown";
+
+  if (/android/i.test(ua)) { os = "Android"; deviceType = "Mobile"; platform = "web-mobile"; }
+  else if (/iphone/i.test(ua)) { os = "iOS"; deviceType = "Mobile"; platform = "web-mobile"; }
+  else if (/ipad/i.test(ua)) { os = "iOS"; deviceType = "Tablet"; platform = "web-tablet"; }
+  else if (/windows/i.test(ua)) { os = "Windows"; }
+  else if (/mac/i.test(ua)) { os = "macOS"; }
+  else if (/linux/i.test(ua)) { os = "Linux"; }
+
+  if (/chrome/i.test(ua) && !/edg/i.test(ua)) browser = "Chrome";
+  else if (/firefox/i.test(ua)) browser = "Firefox";
+  else if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = "Safari";
+  else if (/edg/i.test(ua)) browser = "Edge";
+  else if (/opr|opera/i.test(ua)) browser = "Opera";
+
+  return { platform, deviceType, os, browser, ua: ua.slice(0, 120) };
 }
 
-export function formatBytes(b) {
-  if (!b) return "0 B";
-  const k = 1024, s = ["B","KB","MB","GB","TB","PB"], i = Math.floor(Math.log(b)/Math.log(k));
-  return `${parseFloat((b/Math.pow(k,i)).toFixed(2))} ${s[i]}`;
+export async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 export function buildMeta(files, text) {
   return {
-    hasFiles:    !!(files && files.length),
-    hasText:     !!(text && text.trim()),
-    files:       files ? files.map(f=>({ name:f.name, size:f.size, type:f.type||"application/octet-stream" })) : [],
-    totalSize:   files ? files.reduce((a,f)=>a+f.size,0) : 0,
-    textLength:  text ? text.trim().length : 0,
-    textPreview: text ? text.trim().slice(0,80) : null,
+    files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+    totalSize: files.reduce((a, f) => a + f.size, 0),
+    hasText: !!text,
+    textLength: text ? text.length : 0,
   };
 }
 
-function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+const CHUNK_SIZE = 64 * 1024;
 
-async function readChunk(file, start, size) {
-  return new Promise((res,rej) => {
-    const r = new FileReader();
-    r.onload  = ()=>res(r.result);
-    r.onerror = rej;
-    r.readAsArrayBuffer(file.slice(start, start+size));
-  });
-}
-
-// ── SENDER (Initiator) ────────────────────────────────────────────────────────
 export class SenderPeer {
   constructor({ socket, files, text, onPeerConnected, onProgress, onDone, onError }) {
-    this.socket          = socket;
-    this.files           = files || [];
-    this.text            = text ? text.trim() : null;
+    this.socket = socket;
+    this.files = files;
+    this.text = text;
     this.onPeerConnected = onPeerConnected;
-    this.onProgress      = onProgress;
-    this.onDone          = onDone;
-    this.onError         = onError;
-    this.pcMap           = new Map();
-    this.dcMap           = new Map();
+    this.onProgress = onProgress;
+    this.onDone = onDone;
+    this.onError = onError;
+    this.pcs = {};
+    this.channels = {};
+    this.destroyed = false;
   }
 
-  async handlePeerJoined({ peerId }) {
-    try {
-      const pc = new RTCPeerConnection(ICE);
-      const dc = pc.createDataChannel("transfer", { ordered: true });
-      this.pcMap.set(peerId, pc);
-      this.dcMap.set(peerId, dc);
+  handlePeerJoined({ peerId }) {
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] });
+    this.pcs[peerId] = pc;
 
-      pc.onicecandidate = e => {
-        if (e.candidate) this.socket.emit("signal", { to: peerId, data: { type:"candidate", candidate: e.candidate } });
-      };
+    const channel = pc.createDataChannel("file-transfer", { ordered: true });
+    this.channels[peerId] = channel;
 
-      dc.onopen = () => {
-        this.onPeerConnected(peerId);
-        this._sendAll(dc, peerId);
-      };
+    channel.onopen = () => {
+      this.onPeerConnected?.();
+      this._sendAll(channel, peerId);
+    };
+    channel.onerror = (e) => this.onError?.(e.message || "Channel error");
 
-      dc.onerror = e => this.onError(e.error?.message || "DataChannel error");
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) this.socket.emit("signal", { to: peerId, data: { candidate } });
+    };
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      this.socket.emit("signal", { to: peerId, data: { type:"offer", sdp: offer } });
-    } catch(e) { this.onError(e.message); }
-  }
-
-  async receiveSignal({ from, data }) {
-    const pc = this.pcMap.get(from);
-    if (!pc) return;
-    try {
-      if (data.type === "answer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      } else if (data.type === "candidate") {
-        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    } catch(e) { this.onError(e.message); }
-  }
-
-  async _sendAll(dc, peerId) {
-    const send = (data) => new Promise((res) => {
-      const check = () => {
-        if (dc.bufferedAmount < 2 * 1024 * 1024) { dc.send(data); res(); }
-        else setTimeout(check, 20);
-      };
-      check();
+    pc.createOffer().then((offer) => {
+      pc.setLocalDescription(offer);
+      this.socket.emit("signal", { to: peerId, data: { sdp: offer } });
     });
+  }
 
-    const sendJson = async (obj) => { await send(JSON.stringify(obj)); await sleep(30); };
+  receiveSignal({ from, data }) {
+    const pc = this.pcs[from];
+    if (!pc) return;
+    if (data.sdp) pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    if (data.candidate) pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+  }
 
+  async _sendAll(channel, peerId) {
     try {
-      // Send text
-      if (this.text) {
-        const bytes = new TextEncoder().encode(this.text);
-        await sendJson({ cmd:"meta-text", size: bytes.byteLength });
-        for (let off=0; off<bytes.byteLength; off+=CHUNK) {
-          await send(bytes.slice(off, off+CHUNK).buffer);
-        }
-        await sendJson({ cmd:"text-done" });
-        await sleep(80);
+      if (this.text) await this._sendText(channel);
+      for (let i = 0; i < this.files.length; i++) {
+        await this._sendFile(channel, this.files[i], i);
       }
+      channel.send(JSON.stringify({ type: "done" }));
+      this.onDone?.();
+    } catch (e) {
+      this.onError?.(e.message);
+    }
+  }
 
-      // Send files
-      for (let fi=0; fi<this.files.length; fi++) {
-        const file = this.files[fi];
-        await sendJson({ cmd:"meta-file", index:fi, total:this.files.length, name:file.name, size:file.size, type:file.type||"application/octet-stream" });
-        let offset = 0;
-        while (offset < file.size) {
-          const buf = await readChunk(file, offset, CHUNK);
-          await send(buf);
-          offset += buf.byteLength;
-          this.onProgress(peerId, fi, Math.round((offset/file.size)*100), offset, file.size, file.name);
-        }
-        await sendJson({ cmd:"file-done", index:fi });
-        await sleep(80);
+  async _sendText(channel) {
+    channel.send(JSON.stringify({ type: "text", content: this.text }));
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  async _sendFile(channel, file, fileIndex) {
+    channel.send(JSON.stringify({ type: "file-start", name: file.name, size: file.size, index: fileIndex }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    const buffer = await file.arrayBuffer();
+    let offset = 0;
+
+    while (offset < buffer.byteLength) {
+      while (channel.bufferedAmount > 8 * 1024 * 1024) {
+        await new Promise((r) => setTimeout(r, 50));
       }
+      const chunk = buffer.slice(offset, offset + CHUNK_SIZE);
+      channel.send(chunk);
+      offset += chunk.byteLength;
+      const pct = Math.round((offset / buffer.byteLength) * 100);
+      this.onProgress?.("peer", fileIndex, pct, offset, buffer.byteLength, file.name);
+    }
 
-      await sendJson({ cmd:"all-done" });
-      this.onDone(peerId);
-    } catch(e) { this.onError(e.message); }
+    channel.send(JSON.stringify({ type: "file-end", name: file.name, index: fileIndex }));
+    await new Promise((r) => setTimeout(r, 50));
   }
 
   destroy() {
-    this.dcMap.forEach(dc => { try { dc.close(); } catch {} });
-    this.pcMap.forEach(pc => { try { pc.close(); } catch {} });
-    this.dcMap.clear(); this.pcMap.clear();
+    this.destroyed = true;
+    Object.values(this.channels).forEach((c) => { try { c.close(); } catch {} });
+    Object.values(this.pcs).forEach((pc) => { try { pc.close(); } catch {} });
   }
 }
 
-// ── RECEIVER (Non-initiator) ──────────────────────────────────────────────────
 export class ReceiverPeer {
   constructor({ socket, hostId, onText, onFileStart, onFileProgress, onFileDone, onAllDone, onError }) {
-    this.socket         = socket;
-    this.hostId         = hostId;
-    this.onText         = onText;
-    this.onFileStart    = onFileStart;
+    this.socket = socket;
+    this.hostId = hostId;
+    this.onText = onText;
+    this.onFileStart = onFileStart;
     this.onFileProgress = onFileProgress;
-    this.onFileDone     = onFileDone;
-    this.onAllDone      = onAllDone;
-    this.onError        = onError;
-
-    this.pc             = null;
-    this.mode           = "idle";
-    this.textBufs       = []; this.textSize = 0; this.textRecv = 0;
-    this.fileBufs       = []; this.fileMeta = null; this.fileRecv = 0;
-
+    this.onFileDone = onFileDone;
+    this.onAllDone = onAllDone;
+    this.onError = onError;
+    this.pc = null;
+    this.currentFile = null;
+    this.chunks = [];
+    this.receivedBytes = 0;
     this._init();
   }
 
   _init() {
-    try {
-      const pc = new RTCPeerConnection(ICE);
-      this.pc = pc;
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] });
+    this.pc = pc;
 
-      pc.onicecandidate = e => {
-        if (e.candidate) this.socket.emit("signal", { to: this.hostId, data: { type:"candidate", candidate: e.candidate } });
-      };
+    pc.ondatachannel = ({ channel }) => {
+      channel.onmessage = ({ data }) => this._handleMessage(data);
+      channel.onerror = (e) => this.onError?.(e.message || "Channel error");
+    };
 
-      pc.ondatachannel = e => {
-        const dc = e.channel;
-        dc.binaryType = "arraybuffer";
-        dc.onmessage  = ev => this._onData(ev.data);
-        dc.onerror    = err => this.onError(err.error?.message || "DataChannel error");
-      };
-    } catch(e) { this.onError(e.message); }
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) this.socket.emit("signal", { to: this.hostId, data: { candidate } });
+    };
   }
 
-  async receiveSignal(data) {
+  receiveSignal(data) {
     const pc = this.pc;
     if (!pc) return;
-    try {
-      if (data.type === "offer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        this.socket.emit("signal", { to: this.hostId, data: { type:"answer", sdp: answer } });
-      } else if (data.type === "answer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      } else if (data.type === "candidate") {
-        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    } catch(e) { this.onError(e.message); }
-  }
-
-  _tryJson(data) {
-    if (typeof data !== "string") return null;
-    try { return JSON.parse(data); } catch { return null; }
-  }
-
-  _onData(raw) {
-    const cmd = this._tryJson(raw);
-    if (cmd) {
-      if (cmd.cmd === "meta-text")  { this.mode="text"; this.textBufs=[]; this.textSize=cmd.size; this.textRecv=0; return; }
-      if (cmd.cmd === "text-done")  {
-        const out = new Uint8Array(this.textRecv); let o=0;
-        for (const b of this.textBufs) { const a=new Uint8Array(b); out.set(a,o); o+=a.length; }
-        this.onText(new TextDecoder().decode(out));
-        this.mode="idle"; return;
-      }
-      if (cmd.cmd === "meta-file")  { this.mode="file"; this.fileMeta=cmd; this.fileBufs=[]; this.fileRecv=0; this.onFileStart(cmd); return; }
-      if (cmd.cmd === "file-done")  {
-        const blob = new Blob(this.fileBufs, { type: this.fileMeta.type });
-        this.onFileDone(blob, this.fileMeta.name, this.fileMeta.index);
-        this.fileBufs=[]; this.fileRecv=0; this.mode="idle"; return;
-      }
-      if (cmd.cmd === "all-done")   { this.onAllDone(); return; }
-      return;
+    if (data.sdp) {
+      pc.setRemoteDescription(new RTCSessionDescription(data.sdp)).then(() => {
+        if (data.sdp.type === "offer") {
+          pc.createAnswer().then((answer) => {
+            pc.setLocalDescription(answer);
+            this.socket.emit("signal", { to: this.hostId, data: { sdp: answer } });
+          });
+        }
+      });
     }
+    if (data.candidate) pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+  }
 
-    // Binary chunk
-    const buf = raw instanceof ArrayBuffer ? raw : raw.buffer;
-    if (this.mode === "text") {
-      this.textBufs.push(buf); this.textRecv += buf.byteLength;
-    } else if (this.mode === "file") {
-      this.fileBufs.push(buf); this.fileRecv += buf.byteLength;
-      const pct = this.fileMeta ? Math.round((this.fileRecv/this.fileMeta.size)*100) : 0;
-      this.onFileProgress(pct, this.fileRecv, this.fileMeta?.size||0, this.fileMeta?.name||"");
+  _handleMessage(data) {
+    if (typeof data === "string") {
+      const msg = JSON.parse(data);
+      if (msg.type === "text") { this.onText?.(msg.content); }
+      else if (msg.type === "file-start") {
+        this.currentFile = { name: msg.name, size: msg.size, index: msg.index };
+        this.chunks = [];
+        this.receivedBytes = 0;
+        this.onFileStart?.(this.currentFile);
+      } else if (msg.type === "file-end") {
+        const blob = new Blob(this.chunks);
+        this.onFileDone?.(blob, this.currentFile.name);
+        this.currentFile = null;
+        this.chunks = [];
+        this.receivedBytes = 0;
+      } else if (msg.type === "done") {
+        this.onAllDone?.();
+      }
+    } else {
+      this.chunks.push(data);
+      this.receivedBytes += data.byteLength || data.size || 0;
+      if (this.currentFile) {
+        const pct = Math.round((this.receivedBytes / this.currentFile.size) * 100);
+        this.onFileProgress?.(pct, this.receivedBytes, this.currentFile.size, this.currentFile.name);
+      }
     }
   }
 
-  destroy() { try { this.pc?.close(); } catch {} }
+  destroy() {
+    try { this.pc?.close(); } catch {}
+  }
 }
