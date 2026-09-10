@@ -11,10 +11,10 @@ export default function AuthGuard({ children }) {
 
   useEffect(() => {
     const check = async () => {
-      if (Capacitor.isNativePlatform()) {
-        setVerified(true);
-        return;
-      }
+      if (Capacitor.isNativePlatform() || navigator.userAgent.includes("LinkDropNativeApp")) {
+      setVerified(true);
+      return;
+    }
       
       const raw = localStorage.getItem(SESSION_KEY);
 
